@@ -76,4 +76,38 @@ async function onMove(task) {
   if (task.project) await edge(s, 'scoped-to', task.project, { phase: 'fluid' });
 }
 
-module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove };
+async function onBlock(blockerId, blockedId, bodyA, bodyB) {
+  await edge(`task:${blockerId}`, 'blocks', `task:${blockedId}`, { phase: 'fluid', notes: `${bodyA} → ${bodyB}` });
+}
+
+async function onUnblock(blockerId, blockedId) {
+  await dissolve(`task:${blockerId}`, 'blocks', `task:${blockedId}`);
+}
+
+async function getBlocking(id) {
+  // returns { blocks: [...], blocked_by: [...] }
+  const [a, b] = await Promise.all([
+    pool.query(
+      `SELECT object, notes FROM edges WHERE subject = $1 AND predicate = 'blocks' AND dissolved_at IS NULL`,
+      [`task:${id}`]
+    ),
+    pool.query(
+      `SELECT subject, notes FROM edges WHERE object = $1 AND predicate = 'blocks' AND dissolved_at IS NULL`,
+      [`task:${id}`]
+    ),
+  ]);
+  return {
+    blocks: a.rows.map(r => ({ id: parseInt(r.object.replace('task:', '')), notes: r.notes })),
+    blocked_by: b.rows.map(r => ({ id: parseInt(r.subject.replace('task:', '')), notes: r.notes })),
+  };
+}
+
+async function getAnnotations(id) {
+  const { rows } = await pool.query(
+    `SELECT notes, created_at FROM edges WHERE subject = $1 AND predicate = 'annotated-by' AND dissolved_at IS NULL ORDER BY created_at DESC LIMIT 1`,
+    [`task:${id}`]
+  );
+  return rows[0] || null;
+}
+
+module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, getBlocking, getAnnotations };

@@ -38,10 +38,20 @@ async function main() {
   server.tool('list', 'List open tasks (today + overdue)', {
     date: z.string().optional().describe('ISO date YYYY-MM-DD, defaults to today'),
     project: z.string().optional().describe('Include tasks for this project (plus global)'),
-  }, async ({ date, project }) => {
+    detail: z.boolean().optional().describe('If true, include Qwen annotations and blocking relationships'),
+  }, async ({ date, project, detail }) => {
     const tasks = await db.list({ date, project });
     if (!tasks.length) return { content: [{ type: 'text', text: 'No open tasks.' }] };
-    return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
+    if (!detail) return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
+    const lines = await Promise.all(tasks.map(async t => {
+      const [ann, blocking] = await Promise.all([rhizome.getAnnotations(t.id), rhizome.getBlocking(t.id)]);
+      const row = [fmt(t)];
+      if (blocking.blocked_by.length) row.push(`  ↑ blocked by: ${blocking.blocked_by.map(b => `#${b.id}`).join(', ')}`);
+      if (blocking.blocks.length) row.push(`  ↓ blocks: ${blocking.blocks.map(b => `#${b.id}`).join(', ')}`);
+      if (ann) row.push(`  ✎ ${ann.notes}`);
+      return row.join('\n');
+    }));
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
   server.tool('snooze', 'Snooze a task to a future date', {
@@ -107,6 +117,43 @@ async function main() {
     });
     child.unref();
     return { content: [{ type: 'text', text: `Annotation batch started (pid ${child.pid}). Follow progress: tail -f ${logPath}` }] };
+  });
+
+  server.tool('block', 'Mark task A as blocking task B', {
+    blocker: z.number().describe('ID of the blocking task'),
+    blocked: z.number().describe('ID of the task being blocked'),
+  }, async ({ blocker, blocked }) => {
+    const [a, b] = await Promise.all([db.pool.query('SELECT * FROM tasks WHERE id=$1',[blocker]), db.pool.query('SELECT * FROM tasks WHERE id=$1',[blocked])]);
+    if (!a.rows[0]) return { content: [{ type: 'text', text: `Task ${blocker} not found.` }] };
+    if (!b.rows[0]) return { content: [{ type: 'text', text: `Task ${blocked} not found.` }] };
+    await rhizome.onBlock(blocker, blocked, a.rows[0].body, b.rows[0].body);
+    return { content: [{ type: 'text', text: `task:${blocker} --blocks--> task:${blocked}` }] };
+  });
+
+  server.tool('unblock', 'Remove a blocking relationship', {
+    blocker: z.number().describe('ID of the blocking task'),
+    blocked: z.number().describe('ID of the task being unblocked'),
+  }, async ({ blocker, blocked }) => {
+    await rhizome.onUnblock(blocker, blocked);
+    return { content: [{ type: 'text', text: `Removed: task:${blocker} --blocks--> task:${blocked}` }] };
+  });
+
+  server.tool('notes', 'Show Qwen annotation and blocking relationships for a task', {
+    id: z.number().describe('Task ID'),
+  }, async ({ id }) => {
+    const [taskRes, annotation, blocking] = await Promise.all([
+      db.pool.query('SELECT * FROM tasks WHERE id=$1', [id]),
+      rhizome.getAnnotations(id),
+      rhizome.getBlocking(id),
+    ]);
+    if (!taskRes.rows[0]) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    const task = taskRes.rows[0];
+    const lines = [fmt(task)];
+    if (blocking.blocked_by.length) lines.push(`  blocked by: ${blocking.blocked_by.map(b => `#${b.id}`).join(', ')}`);
+    if (blocking.blocks.length) lines.push(`  blocks: ${blocking.blocks.map(b => `#${b.id}`).join(', ')}`);
+    if (annotation) lines.push(`  annotation: ${annotation.notes}`);
+    else lines.push(`  annotation: (none)`);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
   server.tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {}, async () => {
