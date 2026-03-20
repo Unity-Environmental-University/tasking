@@ -11,13 +11,14 @@ const trello = require('./trello');
 const PORT = 5055;
 
 function fmt(task) {
-  const sym = { open: '•', done: '✓', cancelled: '✗', log: '–' }[task.status] || '?';
+  const sym = { open: '•', done: '✓', cancelled: '✗', log: '–', 'needs-review': '~' }[task.status] || '?';
   const d = task.task_date instanceof Date
     ? task.task_date.toISOString().slice(0, 10)
     : String(task.task_date).slice(0, 10);
   const proj = task.project ? ` @${task.project.split('/').pop()}` : '';
   const claude = task.tags && task.tags.includes('c') ? ' [c]' : '';
-  return `[${task.id}] ${sym} ${task.body}${claude}${proj}  (${d})`;
+  const reviewers = task.tags ? task.tags.filter(t => t.startsWith('@')).join(' ') : '';
+  return `[${task.id}] ${sym} ${task.body}${claude}${reviewers ? ' ' + reviewers : ''}${proj}  (${d})`;
 }
 
 async function main() {
@@ -81,6 +82,25 @@ async function main() {
     if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
     rhizome.onCancel(task);
     return { content: [{ type: 'text', text: `Cancelled: ${fmt(task)}` }] };
+  });
+
+  server.tool('review', 'Mark a task as needs-review and create a Review: task for the reviewer', {
+    id: z.number().describe('Task ID to mark as needs-review'),
+    reviewer: z.string().optional().describe('Person to assign the review to (e.g. "hallie" or "@hallie")'),
+  }, async ({ id, reviewer }) => {
+    const task = await db.getById(id);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    await db.setStatus(id, 'needs-review');
+    const reviewerTag = reviewer ? '@' + reviewer.replace(/^@/, '') : null;
+    const reviewTask = await db.add(`Review: ${task.body}`, {
+      project: task.project,
+      tags: reviewerTag ? [reviewerTag] : [],
+    });
+    const lines = [
+      `Needs review: ${fmt({ ...task, status: 'needs-review' })}`,
+      `Created: ${fmt(reviewTask)}`,
+    ];
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
   server.tool('log', 'Add a log/note entry', {
@@ -155,6 +175,90 @@ async function main() {
     if (annotation) lines.push(`  annotation: ${annotation.notes}`);
     else lines.push(`  annotation: (none)`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+  // ── Browser / extension tools ─────────────────────────────────────────────
+  // These are designed to be called by browser extensions (e.g. Cyber-Rhizome)
+  // over HTTP. Any extension pointed at this MCP server can use them.
+
+  server.tool('rhizome_edge', 'Write an arbitrary edge into rhizome-alkahest', {
+    subject:   z.string().describe('Edge subject, e.g. "url:https://..." or "user:hallie"'),
+    predicate: z.string().describe('Edge predicate, e.g. "visited" or "read-message"'),
+    object:    z.string().describe('Edge object'),
+    phase:     z.enum(['volatile', 'fluid', 'salt']).optional().describe('Default: fluid'),
+    notes:     z.string().optional().describe('Free-text notes attached to the edge'),
+  }, async ({ subject, predicate, object, phase, notes }) => {
+    const { Pool } = require('pg');
+    const pool = new Pool({ database: 'rhizome-alkahest' });
+    try {
+      await pool.query(
+        `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+         VALUES ($1, $2, $3, $4, 'browser-extension', $5)
+         ON CONFLICT DO NOTHING`,
+        [subject, predicate, object, phase || 'fluid', notes || '']
+      );
+      return { content: [{ type: 'text', text: `(${subject} --${predicate}--> ${object}) [${phase || 'fluid'}]` }] };
+    } finally {
+      await pool.end();
+    }
+  });
+
+  server.tool('context_push', 'Record current browser page context as a rhizome edge', {
+    url:     z.string().describe('Current page URL'),
+    title:   z.string().optional().describe('Page title'),
+    context: z.string().optional().describe('Additional context (selected text, page type, etc.)'),
+    user:    z.string().optional().describe('User identifier, e.g. "hallie"'),
+  }, async ({ url, title, context, user }) => {
+    const { Pool } = require('pg');
+    const pool = new Pool({ database: 'rhizome-alkahest' });
+    const subject = user ? `user:${user}` : 'user:unknown';
+    const object = `url:${url}`;
+    const notes = [title, context].filter(Boolean).join(' — ');
+    try {
+      await pool.query(
+        `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+         VALUES ($1, 'visited', $2, 'volatile', 'browser-extension', $3)
+         ON CONFLICT DO NOTHING`,
+        [subject, object, notes]
+      );
+      return { content: [{ type: 'text', text: `context recorded: ${subject} visited ${url}` }] };
+    } finally {
+      await pool.end();
+    }
+  });
+
+  server.tool('teams_message', 'Store a captured Teams message as a rhizome edge', {
+    message_id: z.string().describe('Teams message ID'),
+    channel:    z.string().optional().describe('Channel or chat name'),
+    sender:     z.string().optional().describe('Sender display name'),
+    body:       z.string().describe('Message body text'),
+    url:        z.string().optional().describe('Deep link to the message'),
+    user:       z.string().optional().describe('User who read this, e.g. "hallie"'),
+  }, async ({ message_id, channel, sender, body, url, user }) => {
+    const { Pool } = require('pg');
+    const pool = new Pool({ database: 'rhizome-alkahest' });
+    const subject = user ? `user:${user}` : 'user:unknown';
+    const object = `teams-message:${message_id}`;
+    const notes = [sender && `from:${sender}`, channel && `in:${channel}`, body.slice(0, 200)].filter(Boolean).join(' | ');
+    try {
+      await pool.query(
+        `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+         VALUES ($1, 'read-message', $2, 'fluid', 'browser-extension', $3)
+         ON CONFLICT DO NOTHING`,
+        [subject, object, notes]
+      );
+      if (url) {
+        await pool.query(
+          `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+           VALUES ($1, 'has-url', $2, 'fluid', 'browser-extension', '')
+           ON CONFLICT DO NOTHING`,
+          [object, url]
+        );
+      }
+      return { content: [{ type: 'text', text: `teams message stored: ${object}` }] };
+    } finally {
+      await pool.end();
+    }
   });
 
   server.tool('trello_view', 'View Trello boards and cards', {

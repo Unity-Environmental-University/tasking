@@ -20,7 +20,7 @@ async function init() {
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`).catch(() => {});
 }
 
-// status: open | done | cancelled | log
+// status: open | done | cancelled | log | needs-review
 // project: null = global, repo path = local
 // tags: [] | ['c'] | etc
 
@@ -56,6 +56,11 @@ async function snooze(id, until) {
     [id, date, hasTime ? until : null]
   );
   return rows[0];
+}
+
+async function getById(id) {
+  const { rows } = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [id]);
+  return rows[0] || null;
 }
 
 async function setStatus(id, status) {
@@ -106,4 +111,4 @@ async function claudeTasks() {
   return rows;
 }
 
-module.exports = { init, add, list, snooze, setStatus, setProject, moveTask, log, claudeTasks, pool };
+module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, pool };
