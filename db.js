@@ -39,6 +39,7 @@ async function list({ date, project } = {}) {
      WHERE status NOT IN ('done', 'cancelled')
        AND task_date <= $1
        AND (snoozed_to IS NULL OR snoozed_to <= $1)
+       AND (snoozed_until IS NULL OR snoozed_until <= NOW())
        AND (project IS NULL OR project = $2)
      ORDER BY project NULLS LAST, task_date, id`,
     [d, project || null]
@@ -46,10 +47,13 @@ async function list({ date, project } = {}) {
   return rows;
 }
 
-async function snooze(id, to_date) {
+async function snooze(id, until) {
+  // until is ISO string — could be date or datetime
+  const hasTime = until && until.includes('T');
+  const date = hasTime ? until.slice(0, 10) : until;
   const { rows } = await pool.query(
-    `UPDATE tasks SET snoozed_to = $2, task_date = $2 WHERE id = $1 RETURNING *`,
-    [id, to_date]
+    `UPDATE tasks SET snoozed_to = $2, task_date = $2, snoozed_until = $3 WHERE id = $1 RETURNING *`,
+    [id, date, hasTime ? until : null]
   );
   return rows[0];
 }
@@ -94,6 +98,7 @@ async function claudeTasks() {
      WHERE status NOT IN ('done', 'cancelled')
        AND task_date <= $1
        AND (snoozed_to IS NULL OR snoozed_to <= $1)
+       AND (snoozed_until IS NULL OR snoozed_until <= NOW())
        AND 'c' = ANY(tags)
      ORDER BY task_date, id`,
     [d]

@@ -2,6 +2,8 @@ const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { z } = require('zod');
 const http = require('http');
+const { execFile } = require('child_process');
+const path = require('path');
 const db = require('./db');
 const rhizome = require('./rhizome');
 
@@ -88,6 +90,23 @@ async function main() {
     rhizome.onMove(task);
     const bucket = task.project ? `local (${task.project.split('/').pop()})` : 'global';
     return { content: [{ type: 'text', text: `Moved to ${bucket}: ${fmt(task)}` }] };
+  });
+
+  server.tool('annotate', 'Run Qwen annotation batch on open tasks (fires in background, logs to annotate.log)', {
+    dry_run: z.boolean().optional().describe('If true, print what would happen without writing to rhizome'),
+  }, async ({ dry_run }) => {
+    const { spawn } = require('child_process');
+    const fs = require('fs');
+    const scriptPath = path.join(__dirname, 'annotate.js');
+    const logPath = path.join(__dirname, 'annotate.log');
+    const args = dry_run ? ['--dry-run'] : [];
+    const logStream = fs.openSync(logPath, 'a');
+    const child = spawn(process.execPath, [scriptPath, ...args], {
+      detached: true,
+      stdio: ['ignore', logStream, logStream],
+    });
+    child.unref();
+    return { content: [{ type: 'text', text: `Annotation batch started (pid ${child.pid}). Follow progress: tail -f ${logPath}` }] };
   });
 
   server.tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {}, async () => {
