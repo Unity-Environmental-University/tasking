@@ -6,6 +6,7 @@ const { execFile } = require('child_process');
 const path = require('path');
 const db = require('./db');
 const rhizome = require('./rhizome');
+const trello = require('./trello');
 
 const PORT = 5055;
 
@@ -154,6 +155,47 @@ async function main() {
     if (annotation) lines.push(`  annotation: ${annotation.notes}`);
     else lines.push(`  annotation: (none)`);
     return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+  server.tool('trello_view', 'View Trello boards and cards', {
+    board: z.string().optional().describe('Board name substring; "boards" to list all; omit to use default board'),
+    list: z.string().optional().describe('List name substring to filter cards by'),
+  }, async ({ board, list }) => {
+    try {
+      const bds = await trello.boards();
+      if (board === 'boards' || board === 'all') {
+        const lines = bds.map(b => `[${b.name}]  ${b.shortUrl}`);
+        return { content: [{ type: 'text', text: lines.join('\n') || 'No open boards.' }] };
+      }
+      if (!board) {
+        // use default board from Keychain
+        const { execSync } = require('child_process');
+        let def = null;
+        try { def = execSync('security find-generic-password -a tasking -s "TRELLO_DEFAULT_BOARD" -w', { stdio: ['pipe','pipe','pipe'], encoding: 'utf8' }).trim(); } catch {}
+        if (!def) {
+          const lines = bds.map(b => `[${b.name}]  ${b.shortUrl}`);
+          return { content: [{ type: 'text', text: `No default board set. Run: t reg TRELLO_DEFAULT_BOARD "board name"\n\n${lines.join('\n')}` }] };
+        }
+        board = def;
+      }
+      const match = bds.find(b => b.name.toLowerCase().includes(board.toLowerCase()));
+      if (!match) return { content: [{ type: 'text', text: `No board matching "${board}".` }] };
+      const [ls, cs] = await Promise.all([trello.lists(match.id), trello.cards(match.id)]);
+      const listMap = Object.fromEntries(ls.map(l => [l.id, l.name]));
+      let filtered = cs;
+      if (list) {
+        const lmatch = ls.find(l => l.name.toLowerCase().includes(list.toLowerCase()));
+        if (lmatch) filtered = cs.filter(c => c.idList === lmatch.id);
+      }
+      if (!filtered.length) return { content: [{ type: 'text', text: 'No open cards.' }] };
+      const lines = filtered.map(c => {
+        const due = c.due ? ` (due ${c.due.slice(0,10)})` : '';
+        return `• ${c.name}  [${listMap[c.idList] || '?'}]${due}`;
+      });
+      return { content: [{ type: 'text', text: `${match.name}\n${lines.join('\n')}` }] };
+    } catch (e) {
+      return { content: [{ type: 'text', text: e.message }] };
+    }
   });
 
   server.tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {}, async () => {
