@@ -24,11 +24,16 @@ t                          # list today's tasks (global + current repo)
 t buy oat milk             # add a task (bare text = global)
 t c follow up with Sam     # add claude-tagged task (local to current repo)
 t done 5                   # mark done
-t snooze 5 friday          # snooze: tomorrow, friday, next week, 1d, 2w, YYYY-MM-DD
+t done 5 "shipped it"      # mark done with closing note (→ rhizome)
+t edit 5 new text          # edit task body
+t snooze 5 friday          # snooze: tomorrow, friday, next week, 1d, 2w, 2mo, YYYY-MM-DD
 t mv 5                     # toggle local/global
+t signal                   # surface patterns: stuck, avoidance, clusters, velocity
 t standup                  # draft standup from recent done + open tasks
+t block 5 8                # mark task 5 as blocking task 8
 t loop ghostty "message"   # signal a Claude loop in another repo
 t log shipped the thing    # log entry
+t ls -a                    # full history (done + cancelled)
 t help                     # full command reference
 ```
 

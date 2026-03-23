@@ -17,8 +17,11 @@ PostgreSQL (tasking db)
   └── tasks table
 
 MCP HTTP server — port 5055
-  └── tools: add, list, snooze, complete, cancel, log, move, claude_tasks
+  └── tools: add, list, list_all, edit, snooze, complete, cancel, log, move,
+             block, unblock, notes, review, signal, standup, annotate,
+             claude_tasks, trello_view, rhizome_edge, context_push, teams_message
   └── launchd: com.hlarsson.tasking (always running)
+  └── per-request McpServer instances (safe for concurrent clients)
 
 ~/utils/t — CLI wrapper
   └── calls MCP server over HTTP
@@ -31,8 +34,8 @@ Claude Desktop
   └── ~/.../claude_desktop_config.json → url: http://localhost:5055/mcp
 
 rhizome-alkahest (postgres: rhizome-alkahest db)
-  └── rhizome.js — writes lifecycle edges on add/complete/cancel/snooze/move
-  └── observer: tasking-system frame
+  └── rhizome.js — writes lifecycle edges on add/complete/cancel/snooze/move/block
+  └── observers: hallie, unity-rhizome-alkahest, composite (routed by task.source)
 ```
 
 ## Task anatomy
@@ -53,6 +56,7 @@ rhizome-alkahest (postgres: rhizome-alkahest db)
 | `✓` | done |
 | `✗` | cancelled |
 | `–` | log entry |
+| `~` | needs-review |
 
 ## CLI
 
@@ -64,18 +68,24 @@ t add [-l] [-c] <text>   # add task (-l local, -c claude-tagged)
 t c <text>               # add claude-tagged, defaults local if in git repo (-g for global)
 t edit <id> <new text>   # edit task body in place
 t log <text>             # log entry
-t done <id>              # complete
 t cancel <id>            # cancel
 t snooze <id> <when>     # snooze: 1d, 2w, 2mo, friday, tomorrow, next week, YYYY-MM-DD
 t <id> local|l           # scope to current repo
 t <id> global|g          # release to global
 t mv <id>                # toggle between local and global
-t standup                # draft standup from recent done + open tasks
+t done <id> [note]       # complete (optional closing note → rhizome salt edge)
+t review <id> [@person]  # mark needs-review, create Review: task for person
+t block <id> <id2>       # mark task as blocking another
+t unblock <id> <id2>     # remove blocking relationship
+t notes <id>             # show Qwen annotation + blocking relationships
+t signal                 # surface patterns: stuck, avoidance, clusters, velocity
+t standup [--hours N]    # draft standup from recent done + open tasks
 t loop <repo> <msg>      # signal a Claude loop in another repo
-t annotate               # run Qwen annotation batch on open tasks
+t annotate [--dry-run]   # run Qwen annotation batch on open tasks
+t trello [board] [list]  # view Trello boards and cards
 t reg NAME VALUE         # store secret in macOS Keychain
 t keys                   # list registered key names
-t help                   # this
+t help                   # full reference
 ```
 
 ## Scoping
@@ -92,16 +102,22 @@ Every task lifecycle event writes an edge to `rhizome-alkahest`:
 | event | edge | phase |
 |-------|------|-------|
 | add | `task:N --records--> body` | fluid |
+| add (non-hallie) | `task:N --originated-by--> source` | salt |
 | add (local) | `task:N --scoped-to--> /path` | fluid |
 | add ([c]) | `task:N --flagged-for--> claude` | fluid |
 | complete | `task:N --completed-on--> date` | salt |
+| complete (with note) | `task:N --closed-with--> note` | salt |
 | cancel | `task:N --cancelled-on--> date` | salt |
 | snooze | `task:N --snoozed-to--> date` | fluid |
 | move | `task:N --scoped-to--> /path` | fluid |
+| block | `task:A --blocks--> task:B` | fluid |
+| annotate | `task:N --annotated-by--> qwen` | fluid |
 | git commit (refs #N) | `task:N --has-commit--> commit:SHA` | fluid |
 | git commit (any) | `commit:SHA --in-repo--> repo-name` | fluid |
 
-Completed tasks dissolve their `records` edge. Snooze patterns accumulate — multiple `snoozed-to` edges on the same task are a signal worth reading.
+Observer is routed by `task.source`: hallie's tasks → `hallie` observer, Claude's → `unity-rhizome-alkahest`, composite → both. This enables parallax — seeing where human and agent attention diverge.
+
+Completed tasks dissolve their `records` edge. Snooze patterns accumulate — multiple `snoozed-to` edges on the same task are a signal worth reading. `t signal` surfaces these patterns along with stuck tasks, workfront clusters, and completion velocity.
 
 ## Secrets
 
@@ -119,9 +135,16 @@ Claude never reads secrets. Scripts pull from Keychain at runtime.
 Already done:
 - ~~Qwen annotation~~ — live via `t annotate`, Qwen at :5052
 - ~~Blocking relationships~~ — `t block`, `t unblock`, edges in rhizome
-- ~~Git commit integration~~ — global post-commit hook at `~/.git-hooks/post-commit`, writes commit↔task edges on every commit
-- ~~Standup generator~~ — `t standup`, drafts from recent done + open
+- ~~Git commit integration~~ — global post-commit hook at `~/.git-hooks/post-commit`, parameterized queries
+- ~~Standup generator~~ — `t standup`, drafts from recent done + open, queries real blockers
 - ~~Cross-loop signals~~ — `t loop <repo> <msg>`, protocol documented in CLAUDE.md
+- ~~Signal / avoidance detection~~ — `t signal`, surfaces stuck/deferred/clusters/velocity/snooze patterns
+- ~~Source field~~ — `task.source` tracks who created (hallie, claude, claude:hallie), routed to rhizome observers
+- ~~Edit + history~~ — `t edit <id> <text>`, `t ls -a` for full history
+- ~~Per-request server~~ — concurrent MCP clients safe, no transport collision
+- ~~Review workflow~~ — `t review <id>`, creates Review: task for reviewer
+- ~~Trello integration~~ — `t trello`, reads boards/cards via Keychain credentials
+- ~~Browser extension tools~~ — `rhizome_edge`, `context_push`, `teams_message` for cyber-rhizome
 
 ## Server management
 
