@@ -126,8 +126,32 @@ tail -f ~/repos/tasking/tasking.log
 curl http://localhost:5055/health
 ```
 
+## Cross-loop communication
+
+Claudes running in loops across different repos can signal each other using `t loop`:
+
+```bash
+t loop <repo-name> "<message>"
+# Creates a global [c] task: "loop:REPO — MESSAGE (from SOURCE)"
+```
+
+**If you see a task starting with `loop:tasking` in your context** — that's a signal addressed to this repo's Claude. Read it, act on it, mark it done.
+
+**To signal another repo's Claude:**
+```bash
+t loop ghostty "found something relevant, check thread:ocean-notes"
+t loop dean "permission probe pattern changed, see task 8"
+```
+
+**Protocol:**
+- Tasks = signals (short, addressed, surfaces via hook automatically)
+- Threads = content (longer transmission — point to it from the task)
+
+The `loop:REPONAME` prefix is the convention. The target Claude sees it in their `UserPromptSubmit` hook context on next wake.
+
 ## Key signals to watch for
 
 - Tasks snoozed 3+ times: blocked, too big, or avoidance — ask what's actually going on
 - No salt edges in rhizome for >3 days: system stalled, say something
 - [c] tasks accumulating without resolution: triage needed
+- `loop:tasking` tasks in context: act on them, then mark done
