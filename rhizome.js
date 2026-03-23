@@ -1,7 +1,5 @@
 // rhizome.js — write task lifecycle edges into rhizome-alkahest
-const { Pool } = require('pg');
-
-const pool = new Pool({ database: 'rhizome-alkahest' });
+const pool = require('./rhizome-pool');
 const OBSERVER = 'tasking-system';
 
 async function edge(subject, predicate, object, { phase = 'fluid', notes = '' } = {}) {

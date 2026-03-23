@@ -206,19 +206,14 @@ function registerTools(server) {
     phase:     z.enum(['volatile', 'fluid', 'salt']).optional().describe('Default: fluid'),
     notes:     z.string().optional().describe('Free-text notes attached to the edge'),
   }, async ({ subject, predicate, object, phase, notes }) => {
-    const { Pool } = require('pg');
-    const pool = new Pool({ database: 'rhizome-alkahest' });
-    try {
-      await pool.query(
-        `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
-         VALUES ($1, $2, $3, $4, 'browser-extension', $5)
-         ON CONFLICT DO NOTHING`,
-        [subject, predicate, object, phase || 'fluid', notes || '']
-      );
-      return { content: [{ type: 'text', text: `(${subject} --${predicate}--> ${object}) [${phase || 'fluid'}]` }] };
-    } finally {
-      await pool.end();
-    }
+    const rhizomePool = require('./rhizome-pool');
+    await rhizomePool.query(
+      `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+       VALUES ($1, $2, $3, $4, 'browser-extension', $5)
+       ON CONFLICT DO NOTHING`,
+      [subject, predicate, object, phase || 'fluid', notes || '']
+    );
+    return { content: [{ type: 'text', text: `(${subject} --${predicate}--> ${object}) [${phase || 'fluid'}]` }] };
   });
 
   server.tool('context_push', 'Record current browser page context as a rhizome edge', {
@@ -227,22 +222,17 @@ function registerTools(server) {
     context: z.string().optional().describe('Additional context (selected text, page type, etc.)'),
     user:    z.string().optional().describe('User identifier, e.g. "hallie"'),
   }, async ({ url, title, context, user }) => {
-    const { Pool } = require('pg');
-    const pool = new Pool({ database: 'rhizome-alkahest' });
+    const rhizomePool = require('./rhizome-pool');
     const subject = user ? `user:${user}` : 'user:unknown';
     const object = `url:${url}`;
     const notes = [title, context].filter(Boolean).join(' — ');
-    try {
-      await pool.query(
-        `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
-         VALUES ($1, 'visited', $2, 'volatile', 'browser-extension', $3)
-         ON CONFLICT DO NOTHING`,
-        [subject, object, notes]
-      );
-      return { content: [{ type: 'text', text: `context recorded: ${subject} visited ${url}` }] };
-    } finally {
-      await pool.end();
-    }
+    await rhizomePool.query(
+      `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+       VALUES ($1, 'visited', $2, 'volatile', 'browser-extension', $3)
+       ON CONFLICT DO NOTHING`,
+      [subject, object, notes]
+    );
+    return { content: [{ type: 'text', text: `context recorded: ${subject} visited ${url}` }] };
   });
 
   server.tool('teams_message', 'Store a captured Teams message as a rhizome edge', {
@@ -253,30 +243,25 @@ function registerTools(server) {
     url:        z.string().optional().describe('Deep link to the message'),
     user:       z.string().optional().describe('User who read this, e.g. "hallie"'),
   }, async ({ message_id, channel, sender, body, url, user }) => {
-    const { Pool } = require('pg');
-    const pool = new Pool({ database: 'rhizome-alkahest' });
+    const rhizomePool = require('./rhizome-pool');
     const subject = user ? `user:${user}` : 'user:unknown';
     const object = `teams-message:${message_id}`;
     const notes = [sender && `from:${sender}`, channel && `in:${channel}`, body.slice(0, 200)].filter(Boolean).join(' | ');
-    try {
-      await pool.query(
+    await rhizomePool.query(
+      `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+       VALUES ($1, 'read-message', $2, 'fluid', 'browser-extension', $3)
+       ON CONFLICT DO NOTHING`,
+      [subject, object, notes]
+    );
+    if (url) {
+      await rhizomePool.query(
         `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
-         VALUES ($1, 'read-message', $2, 'fluid', 'browser-extension', $3)
+         VALUES ($1, 'has-url', $2, 'fluid', 'browser-extension', '')
          ON CONFLICT DO NOTHING`,
-        [subject, object, notes]
+        [object, url]
       );
-      if (url) {
-        await pool.query(
-          `INSERT INTO edges (subject, predicate, object, phase, observer, notes)
-           VALUES ($1, 'has-url', $2, 'fluid', 'browser-extension', '')
-           ON CONFLICT DO NOTHING`,
-          [object, url]
-        );
-      }
-      return { content: [{ type: 'text', text: `teams message stored: ${object}` }] };
-    } finally {
-      await pool.end();
     }
+    return { content: [{ type: 'text', text: `teams message stored: ${object}` }] };
   });
 
   server.tool('trello_view', 'View Trello boards and cards', {
