@@ -10,7 +10,7 @@ Tasks go in fast. The system surfaces them to you — in your terminal, in Claud
 
 ```bash
 # requires: Node.js, PostgreSQL running locally
-git clone https://github.com/unity-hallie/tasking
+git clone https://github.com/Unity-Environmental-University/tasking
 cd tasking
 bash install.sh
 ```
