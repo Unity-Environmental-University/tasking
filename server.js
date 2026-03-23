@@ -365,6 +365,72 @@ function registerTools(server) {
     return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
   });
 
+  server.tool('signal', 'Surface task patterns worth paying attention to — stuck tasks, avoidance, clusters, velocity', {}, async () => {
+    const s = await db.signal();
+    const snoozePatterns = await rhizome.getSnoozePatterns();
+    const lines = [];
+
+    if (snoozePatterns.length) {
+      lines.push('🔄 AVOIDANCE (snoozed 2+ times)');
+      for (const sp of snoozePatterns) {
+        const task = await db.getById(sp.id);
+        if (task && task.status === 'open') {
+          const proj = task.project ? ` @${task.project.split('/').pop()}` : '';
+          lines.push(`  [${sp.id}] ${task.body}${proj}  (snoozed ${sp.snooze_count}x: ${sp.trail})`);
+        }
+      }
+      lines.push('');
+    }
+
+    if (s.stuck.length) {
+      lines.push('⚠ STUCK (open > 3 days, not snoozed forward)');
+      s.stuck.forEach(t => {
+        const proj = t.project ? ` @${t.project.split('/').pop()}` : '';
+        lines.push(`  [${t.id}] ${t.body}${proj}  (${t.age_days}d old)`);
+      });
+      lines.push('');
+    }
+
+    if (s.deferred.length) {
+      lines.push('⏳ DEFERRED (snoozed into the future)');
+      s.deferred.forEach(t => {
+        const proj = t.project ? ` @${t.project.split('/').pop()}` : '';
+        const to = t.snoozed_to instanceof Date ? t.snoozed_to.toISOString().slice(0,10) : String(t.snoozed_to).slice(0,10);
+        lines.push(`  [${t.id}] ${t.body}${proj}  (until ${to}, ${t.days_away}d away)`);
+      });
+      lines.push('');
+    }
+
+    if (s.clusters.length) {
+      lines.push('📍 WORKFRONTS');
+      s.clusters.forEach(c => {
+        const oldest = c.oldest instanceof Date ? c.oldest.toISOString().slice(0,10) : String(c.oldest).slice(0,10);
+        lines.push(`  ${c.repo}: ${c.open_count} open (oldest ${oldest})`);
+      });
+      lines.push('');
+    }
+
+    if (s.signals.length) {
+      lines.push('📡 UNACTED SIGNALS');
+      s.signals.forEach(t => {
+        lines.push(`  [${t.id}] ${t.body.slice(0, 80)}...`);
+      });
+      lines.push('');
+    }
+
+    if (s.velocity.length) {
+      lines.push('📈 VELOCITY (last 7d)');
+      s.velocity.forEach(v => {
+        const day = v.day instanceof Date ? v.day.toISOString().slice(0,10) : String(v.day).slice(0,10);
+        lines.push(`  ${day}: ${v.done} done`);
+      });
+    }
+
+    if (!lines.length) lines.push('All clear. No patterns worth flagging.');
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
 }
 
 function createServer() {

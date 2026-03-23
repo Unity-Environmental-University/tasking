@@ -111,4 +111,27 @@ async function getAnnotations(id) {
   return rows[0] || null;
 }
 
-module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, getBlocking, getAnnotations };
+async function getSnoozePatterns() {
+  // Tasks snoozed 2+ times — signal of avoidance or being blocked
+  try {
+    const { rows } = await pool.query(
+      `SELECT subject, COUNT(*) as snooze_count,
+              string_agg(object, ' → ' ORDER BY created_at) as trail
+       FROM edges
+       WHERE predicate = 'snoozed-to' AND observer = $1
+       GROUP BY subject
+       HAVING COUNT(*) >= 2
+       ORDER BY COUNT(*) DESC`,
+      [OBSERVER]
+    );
+    return rows.map(r => ({
+      id: parseInt(r.subject.replace('task:', '')),
+      snooze_count: parseInt(r.snooze_count),
+      trail: r.trail,
+    }));
+  } catch (e) {
+    return [];
+  }
+}
+
+module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, getBlocking, getAnnotations, getSnoozePatterns };

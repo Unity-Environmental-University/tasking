@@ -145,4 +145,60 @@ async function listAll({ project, limit } = {}) {
   return rows;
 }
 
-module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, pool };
+async function signal() {
+  // Surface patterns worth paying attention to
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 1. Old open tasks (not snoozed past today) — stuck or avoided
+  const { rows: stuck } = await pool.query(
+    `SELECT id, body, task_date, project,
+            CURRENT_DATE - task_date::date as age_days
+     FROM tasks
+     WHERE status = 'open'
+       AND (snoozed_to IS NULL OR snoozed_to <= CURRENT_DATE)
+       AND task_date < CURRENT_DATE - INTERVAL '3 days'
+     ORDER BY task_date`
+  );
+
+  // 2. Tasks snoozed into the future — what's being deferred
+  const { rows: deferred } = await pool.query(
+    `SELECT id, body, snoozed_to, project,
+            snoozed_to::date - CURRENT_DATE as days_away
+     FROM tasks
+     WHERE status = 'open' AND snoozed_to > CURRENT_DATE
+     ORDER BY snoozed_to`
+  );
+
+  // 3. Project clusters — where is the open work concentrated
+  const { rows: clusters } = await pool.query(
+    `SELECT COALESCE(SPLIT_PART(project, '/', -1), '(global)') as repo,
+            COUNT(*) as open_count,
+            MIN(task_date)::date as oldest
+     FROM tasks
+     WHERE status = 'open'
+     GROUP BY project
+     ORDER BY open_count DESC`
+  );
+
+  // 4. Unacted loop signals
+  const { rows: signals } = await pool.query(
+    `SELECT id, body, task_date
+     FROM tasks
+     WHERE status = 'open' AND body LIKE 'loop:%'
+     ORDER BY task_date`
+  );
+
+  // 5. Completion velocity (last 7 days, uses created_at as fallback)
+  const { rows: velocity } = await pool.query(
+    `SELECT COALESCE(completed_at, created_at)::date as day, COUNT(*) as done
+     FROM tasks
+     WHERE status = 'done'
+       AND COALESCE(completed_at, created_at) >= CURRENT_DATE - INTERVAL '7 days'
+     GROUP BY day
+     ORDER BY day DESC`
+  );
+
+  return { stuck, deferred, clusters, signals, velocity };
+}
+
+module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, pool };
