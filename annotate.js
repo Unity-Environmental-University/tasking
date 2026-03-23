@@ -11,7 +11,6 @@
 
 'use strict';
 
-const { Pool } = require('pg');
 const https = require('https');
 const http = require('http');
 
@@ -29,8 +28,9 @@ const UNCLEAR_SIGNALS = [
   'no context', 'without context', 'insufficient',
 ];
 
-const taskingPool = new Pool({ database: 'tasking' });
-const rhizomePool = new Pool({ database: 'rhizome-alkahest' });
+// Use shared pool modules (separate process = separate connections, but same config)
+const taskingPool = require('./db').pool;
+const rhizomePool = require('./rhizome-pool');
 const OBSERVER = 'tasking-system';
 
 // ── Qwen ────────────────────────────────────────────────────────────────────
@@ -67,6 +67,9 @@ function isUnclear(response) {
 }
 
 // ── Rhizome ──────────────────────────────────────────────────────────────────
+// Note: uses ON CONFLICT ... DO UPDATE (not DO NOTHING like rhizome.js).
+// This is intentional — annotations should update with the latest Qwen assessment,
+// while lifecycle edges (add/complete/cancel) should never overwrite.
 
 async function rhizomeEdge(subject, predicate, object, { phase = 'fluid', notes = '' } = {}) {
   if (DRY_RUN) {

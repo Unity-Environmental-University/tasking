@@ -338,8 +338,23 @@ function registerTools(server) {
       lines.push('(nothing scheduled)');
     }
 
+    // Check for actual blocking relationships on open tasks
+    const blockerLines = [];
+    for (const t of realOpen) {
+      const blocking = await rhizome.getBlocking(t.id);
+      if (blocking.blocked_by.length) {
+        const blockerIds = blocking.blocked_by.map(b => `#${b.id}`).join(', ');
+        blockerLines.push(`• #${t.id} ${t.body} — blocked by ${blockerIds}`);
+      }
+    }
+
     lines.push('');
-    lines.push(`**Blockers:** none`);
+    if (blockerLines.length) {
+      lines.push(`**Blockers:**`);
+      blockerLines.forEach(l => lines.push(l));
+    } else {
+      lines.push(`**Blockers:** none`);
+    }
 
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });

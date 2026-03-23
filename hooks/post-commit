@@ -19,23 +19,23 @@ OBSERVER="tasking-system"
 
 write_edge() {
   local subject="$1" predicate="$2" object="$3" phase="${4:-fluid}" notes="${5:-}"
-  "$PSQL" -q "$DB" <<SQL 2>/dev/null || true
+  "$PSQL" -q "$DB" \
+    -v "s=$subject" \
+    -v "p=$predicate" \
+    -v "o=$object" \
+    -v "ph=$phase" \
+    -v "ob=$OBSERVER" \
+    -v "n=$notes" \
+    <<'SQL' 2>/dev/null || true
 INSERT INTO edges (subject, predicate, object, phase, observer, notes)
-VALUES (
-  '$subject',
-  '$predicate',
-  '$object',
-  '$phase',
-  '$OBSERVER',
-  '$(echo "$notes" | sed "s/'/''/g")'
-)
+VALUES (:'s', :'p', :'o', :'ph', :'ob', :'n')
 ON CONFLICT DO NOTHING;
 SQL
 }
 
 HASH=$(git rev-parse HEAD)
 SHORT="${HASH:0:12}"
-MSG=$(git log -1 --format="%s" HEAD)
+MSG=$(git log -1 --format="%s" HEAD | tr -d '"')
 REPO=$(basename "$(git rev-parse --show-toplevel)")
 
 # Parse task IDs — deduplicated, sorted
