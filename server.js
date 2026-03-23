@@ -313,13 +313,14 @@ async function main() {
 
     const lines = [];
     lines.push(`**Yesterday / recent:**`);
-    if (done.length) {
-      done.forEach(t => {
+    const realDone = done.filter(t => !t.body.startsWith('loop:') && t.body !== '--all');
+    if (realDone.length) {
+      realDone.forEach(t => {
         const proj = t.project ? ` (${t.project.split('/').pop()})` : '';
         lines.push(`✓ ${t.body}${proj}`);
       });
     } else {
-      lines.push('(nothing recorded)');
+      lines.push('(nothing recorded recently)');
     }
 
     lines.push('');
