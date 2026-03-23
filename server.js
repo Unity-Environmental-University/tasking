@@ -22,10 +22,7 @@ function fmt(task) {
   return `[${task.id}] ${sym} ${task.body}${claude}${src}${reviewers ? ' ' + reviewers : ''}${proj}  (${d})`;
 }
 
-async function main() {
-  await db.init();
-
-  const server = new McpServer({ name: 'tasking', version: '1.0.0' });
+function registerTools(server) {
 
   server.tool('add', 'Add a task', {
     body: z.string().describe('Task text'),
@@ -368,6 +365,17 @@ async function main() {
     return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
   });
 
+}
+
+function createServer() {
+  const server = new McpServer({ name: 'tasking', version: '1.0.0' });
+  registerTools(server);
+  return server;
+}
+
+async function main() {
+  await db.init();
+
   const httpServer = http.createServer(async (req, res) => {
     if (req.url === '/health') {
       res.writeHead(200);
@@ -375,8 +383,9 @@ async function main() {
       return;
     }
     if ((req.method === 'POST' || req.method === 'GET') && req.url === '/mcp') {
+      const server = createServer();
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      res.on('close', () => transport.close());
+      res.on('close', () => { transport.close(); server.close(); });
       await server.connect(transport);
       await transport.handleRequest(req, res);
       return;
