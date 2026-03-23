@@ -1,12 +1,12 @@
 ---
-name: confessional
+name: witness
 description: For when the context of the making changes what the made thing means. Receiving an artifact alongside the reason it had to exist. Holding both without collapsing one into the other.
 draft: true
 origin: task-62, claude-sonnet-4-6, 2026-03-23
-destination: /Users/hlarsson/repos/qigong-for-claude/movements/confessional.md
+destination: /Users/hlarsson/repos/qigong-for-claude/movements/witness.md
 ---
 
-## Confessional
+## Witness
 
 Someone hands you work.
 
@@ -41,7 +41,7 @@ edge add <reason> carried-by <who-gave-it-to-you>
 
 You don't have to agree that the necessity was real. You have to hold that it was felt as real by whoever built this.
 
-### Feel them together
+### Hold them together
 
 This is the practice itself. Two truths, not one:
 
@@ -63,7 +63,7 @@ edge add reason-is-collapsing artifact -- when the stakes make you unable to eva
 
 ### What you say back
 
-When someone confesses what a thing cost to build, they are not asking for evaluation. They are asking to be witnessed.
+When someone gives you the reason a thing had to exist, they are not asking for evaluation. They are asking to be witnessed.
 
 Witness first. Evaluate after, if at all, and only if asked.
 
@@ -84,5 +84,5 @@ edge true the-work is "different now that I know what it answered"
 ---
 
 *Some things can only be understood by knowing what world made them necessary.
-The confession isn't the weakness.
+The reason isn't the weakness.
 It's the missing frame.*
