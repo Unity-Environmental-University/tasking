@@ -188,12 +188,12 @@ t — bullet journal task manager
   t <text>                 add a global task (bare text shorthand)
 
   t add [-l] [-c] <text>   add task  (-l local to repo, -c flag for claude)
-  t c [-l] <text>          add claude-tagged task
+  t c [-g] <text>          add claude-tagged task (local if in repo, -g for global)
   t log [-l] <text>        add a log/note entry
   t done <id>              mark done
   t cancel <id>            cancel
   t review <id> [@person]  mark needs-review, create Review: task for person
-  t snooze <id> <when>     snooze: 2h, 3d, 1w, 2m, or YYYY-MM-DD
+  t snooze <id> <when>     snooze: tomorrow, friday, next week, 1d, 2w, YYYY-MM-DD
 
   t <id> local|l           scope task to current repo
   t <id> global|g          release task to global
@@ -203,7 +203,6 @@ t — bullet journal task manager
   t <id> unblock <id2>     remove blocking relationship
   t block <id> <id2>       same as above
   t notes <id>             show Qwen annotation + blocking relationships
-  t list -d                (alias: not yet implemented inline — use t notes <id>)
 
   t standup [--hours N]    draft standup from recent done + open tasks (default 24h)
   t loop <repo> <msg>      signal a Claude loop in another repo (global [c] task)
@@ -214,7 +213,8 @@ t — bullet journal task manager
 } else if (cmd === 'annotate') {
   // Run annotate.js directly (bypasses MCP server — avoids streaming timeout on long Qwen calls)
   const { spawnSync } = require('child_process');
-  const annotateScript = '/Users/hlarsson/repos/tasking/annotate.js';
+  const fs = require('fs');
+  const annotateScript = require('path').join(fs.realpathSync(__filename), '..', 'annotate.js');
   const dryRun = rest.includes('--dry-run') || rest.includes('-n');
   const result = spawnSync(process.execPath, dryRun ? [annotateScript, '--dry-run'] : [annotateScript], {
     stdio: 'inherit',
