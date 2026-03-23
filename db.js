@@ -19,16 +19,17 @@ async function init() {
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`).catch(() => {});
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source TEXT`).catch(() => {});
 }
 
 // status: open | done | cancelled | log | needs-review
 // project: null = global, repo path = local
 // tags: [] | ['c'] | etc
 
-async function add(body, { date, project, tags } = {}) {
+async function add(body, { date, project, tags, source } = {}) {
   const { rows } = await pool.query(
-    `INSERT INTO tasks (body, task_date, project, tags) VALUES ($1, $2, $3, $4) RETURNING *`,
-    [body, date || new Date().toISOString().slice(0, 10), project || null, tags || []]
+    `INSERT INTO tasks (body, task_date, project, tags, source) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [body, date || new Date().toISOString().slice(0, 10), project || null, tags || [], source || null]
   );
   return rows[0];
 }

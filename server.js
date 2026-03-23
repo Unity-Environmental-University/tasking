@@ -18,7 +18,8 @@ function fmt(task) {
   const proj = task.project ? ` @${task.project.split('/').pop()}` : '';
   const claude = task.tags && task.tags.includes('c') ? ' [c]' : '';
   const reviewers = task.tags ? task.tags.filter(t => t.startsWith('@')).join(' ') : '';
-  return `[${task.id}] ${sym} ${task.body}${claude}${reviewers ? ' ' + reviewers : ''}${proj}  (${d})`;
+  const src = task.source && task.source !== 'hallie' ? ` {${task.source}}` : '';
+  return `[${task.id}] ${sym} ${task.body}${claude}${src}${reviewers ? ' ' + reviewers : ''}${proj}  (${d})`;
 }
 
 async function main() {
@@ -31,8 +32,9 @@ async function main() {
     date: z.string().optional().describe('ISO date YYYY-MM-DD, defaults to today'),
     project: z.string().optional().describe('Repo path to scope locally, null for global'),
     tags: z.array(z.string()).optional().describe('Tags e.g. ["c"] for claude-aware'),
-  }, async ({ body, date, project, tags }) => {
-    const task = await db.add(body, { date, project, tags });
+    source: z.string().optional().describe('Who created: hallie (default), claude, claude:hallie (agent on behalf of human)'),
+  }, async ({ body, date, project, tags, source }) => {
+    const task = await db.add(body, { date, project, tags, source });
     rhizome.onAdd(task);
     return { content: [{ type: 'text', text: fmt(task) }] };
   });
