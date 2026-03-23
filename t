@@ -61,19 +61,20 @@ function parseFlags(arr) {
 }
 
 function resolveDate(str) {
-  // relative: 2h, 3d, 1w, 2m — bare words — or absolute YYYY-MM-DD
+  // relative: 2h, 3d, 1w, 30m/30min, 2mo — bare words — or absolute YYYY-MM-DD
   if (!str) return null;
-  const rel = str.match(/^(\d+)(h|m|d|w)$/);
+  const rel = str.match(/^(\d+)(h|min|m|mo|d|w)$/);
   if (rel) {
     const n = parseInt(rel[1]);
     const unit = rel[2];
     const d = new Date();
     if (unit === 'h') d.setHours(d.getHours() + n);
-    else if (unit === 'm') d.setMinutes(d.getMinutes() + n);
+    else if (unit === 'm' || unit === 'min') d.setMinutes(d.getMinutes() + n);
+    else if (unit === 'mo') d.setMonth(d.getMonth() + n);
     else if (unit === 'd') d.setDate(d.getDate() + n);
     else if (unit === 'w') d.setDate(d.getDate() + n * 7);
     // hours/minutes: return full ISO datetime so server stores snoozed_until
-    if (unit === 'h' || unit === 'm') return d.toISOString();
+    if (unit === 'h' || unit === 'm' || unit === 'min') return d.toISOString();
     return d.toISOString().slice(0, 10);
   }
   // bare word aliases
