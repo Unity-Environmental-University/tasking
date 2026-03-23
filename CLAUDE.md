@@ -63,10 +63,13 @@ t c <text>               # add claude-tagged, defaults local if in git repo (-g 
 t log <text>             # log entry
 t done <id>              # complete
 t cancel <id>            # cancel
-t snooze <id> YYYY-MM-DD # snooze
+t snooze <id> <when>     # snooze: 1d, friday, tomorrow, next week, YYYY-MM-DD
 t <id> local|l           # scope to current repo
 t <id> global|g          # release to global
 t mv <id>                # toggle between local and global
+t standup                # draft standup from recent done + open tasks
+t loop <repo> <msg>      # signal a Claude loop in another repo
+t annotate               # run Qwen annotation batch on open tasks
 t reg NAME VALUE         # store secret in macOS Keychain
 t keys                   # list registered key names
 t help                   # this
@@ -92,6 +95,8 @@ Every task lifecycle event writes an edge to `rhizome-alkahest`:
 | cancel | `task:N --cancelled-on--> date` | salt |
 | snooze | `task:N --snoozed-to--> date` | fluid |
 | move | `task:N --scoped-to--> /path` | fluid |
+| git commit (refs #N) | `task:N --has-commit--> commit:SHA` | fluid |
+| git commit (any) | `commit:SHA --in-repo--> repo-name` | fluid |
 
 Completed tasks dissolve their `records` edge. Snooze patterns accumulate — multiple `snoozed-to` edges on the same task are a signal worth reading.
 
@@ -106,11 +111,14 @@ Claude never reads secrets. Scripts pull from Keychain at runtime.
 
 ## What's next (backlog in tasking db, local to this repo)
 
-- **Qwen annotation** — local model sweep of unclear tasks, feeds back as notes/edges
-- **Blocking relationships** — `t 5 block 7`, edges native to rhizome
-- **Git commit integration** — commit references task id, edge written automatically
 - **Teams integration** — post standup, read notifications (pending IT auth)
-- **Standup generator** — draft from done + open, post to Teams
+
+Already done:
+- ~~Qwen annotation~~ — live via `t annotate`, Qwen at :5052
+- ~~Blocking relationships~~ — `t block`, `t unblock`, edges in rhizome
+- ~~Git commit integration~~ — global post-commit hook at `~/.git-hooks/post-commit`, writes commit↔task edges on every commit
+- ~~Standup generator~~ — `t standup`, drafts from recent done + open
+- ~~Cross-loop signals~~ — `t loop <repo> <msg>`, protocol documented in CLAUDE.md
 
 ## Server management
 

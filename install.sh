@@ -60,6 +60,22 @@ else
   echo "           (expected at $REPO/t or $REPO/../utils/t)"
 fi
 
+# ── git post-commit hook ──────────────────────────────────────────────────────
+# Installs a global post-commit hook that writes task↔commit edges to rhizome
+HOOKS_DIR="$HOME/.git-hooks"
+HOOK_SRC="$REPO/hooks/post-commit"
+HOOK_DST="$HOOKS_DIR/post-commit"
+
+if [ -f "$HOOK_SRC" ]; then
+  mkdir -p "$HOOKS_DIR"
+  cp "$HOOK_SRC" "$HOOK_DST"
+  chmod +x "$HOOK_DST"
+  git config --global core.hooksPath "$HOOKS_DIR"
+  echo "    git:   post-commit hook installed ✓  ($HOOKS_DIR)"
+else
+  echo "    git:   hooks/post-commit not found in repo — skipping"
+fi
+
 # ── launchd plist ─────────────────────────────────────────────────────────────
 echo "==> installing launchd service ($LABEL)"
 cat > "$PLIST" <<PLIST

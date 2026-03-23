@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# post-commit — write task-commit edges into rhizome-alkahest
+#
+# Parses task IDs from the commit message:
+#   #19        bare hash-ref
+#   task:19    explicit prefix
+#   refs #19   GitHub-style
+#
+# Edges written:
+#   task:N --has-commit-->    commit:<sha12>   (fluid)
+#   commit:<sha12> --worked-on--> task:N       (fluid)
+#   commit:<sha12> --in-repo--> <repo-name>    (fluid, always)
+
+set -euo pipefail
+
+PSQL="/opt/homebrew/opt/postgresql@17/bin/psql"
+DB="rhizome-alkahest"
+OBSERVER="tasking-system"
+
+write_edge() {
+  local subject="$1" predicate="$2" object="$3" phase="${4:-fluid}" notes="${5:-}"
+  "$PSQL" -q "$DB" <<SQL 2>/dev/null || true
+INSERT INTO edges (subject, predicate, object, phase, observer, notes)
+VALUES (
+  '$subject',
+  '$predicate',
+  '$object',
+  '$phase',
+  '$OBSERVER',
+  '$(echo "$notes" | sed "s/'/''/g")'
+)
+ON CONFLICT DO NOTHING;
+SQL
+}
+
+HASH=$(git rev-parse HEAD)
+SHORT="${HASH:0:12}"
+MSG=$(git log -1 --format="%s" HEAD)
+REPO=$(basename "$(git rev-parse --show-toplevel)")
+
+# Parse task IDs — deduplicated, sorted
+TASK_IDS=$(
+  echo "$MSG" \
+  | grep -oE '(task:|refs #|closes #|#)([0-9]+)' \
+  | grep -oE '[0-9]+' \
+  | sort -un
+)
+
+# Always record repo association
+write_edge "commit:${SHORT}" "in-repo" "$REPO" "fluid" "$MSG"
+
+[ -z "$TASK_IDS" ] && exit 0
+
+DATE=$(date +%Y-%m-%d)
+for ID in $TASK_IDS; do
+  write_edge "task:${ID}"      "has-commit"  "commit:${SHORT}" "fluid" "$REPO $DATE"
+  write_edge "commit:${SHORT}" "worked-on"   "task:${ID}"      "fluid" "$MSG"
+done
