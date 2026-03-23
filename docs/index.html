@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tasking — a loop, not a list</title>
+<style>
+
+:root {
+  --cream: #F7F4EF;
+  --ink: #1A1612;
+  --ink-mid: #5C4F43;
+  --ink-light: #9C8E82;
+  --coral: #C94F2A;
+  --brass: #A87228;
+  --teal: #1A7060;
+  --grid: #E8E0D4;
+  --paper: #FDFAF6;
+  --mono: 'SF Mono', 'Fira Mono', 'Cascadia Code', 'Consolas', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--cream);
+  color: var(--ink);
+  line-height: 1.75;
+  overflow-x: hidden;
+}
+
+/* ── Hero ───────────────────────────────────────────────── */
+.hero {
+  padding: 88px 24px 64px;
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto;
+}
+.eyebrow {
+  font-size: .72em; font-weight: 700; letter-spacing: .22em;
+  text-transform: uppercase; color: var(--brass); margin-bottom: 28px;
+}
+.hero h1 {
+  font-size: clamp(2.6em, 8vw, 5em);
+  font-weight: 900; line-height: 1.04;
+  letter-spacing: -.03em; margin-bottom: 28px;
+}
+.hero h1 em { font-style: normal; color: var(--coral); }
+.hero .subtitle {
+  font-size: 1.12em; color: var(--ink-mid);
+  max-width: 460px; margin: 0 auto; line-height: 1.68;
+}
+
+/* ── Section chrome ─────────────────────────────────────── */
+.section-label {
+  font-size: .72em; font-weight: 700; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--brass); margin-bottom: 14px;
+}
+.divider {
+  width: 48px; height: 2px; background: var(--grid);
+  margin: 64px auto;
+}
+
+/* ── Prose ──────────────────────────────────────────────── */
+.prose { max-width: 620px; margin: 0 auto; padding: 0 24px 56px; }
+.prose h2 {
+  font-size: clamp(1.6em, 3.5vw, 2.1em); font-weight: 900;
+  letter-spacing: -.02em; line-height: 1.15; margin-bottom: 24px;
+}
+.prose p { font-size: 1.05em; margin-bottom: 20px; line-height: 1.78; }
+.prose p:last-child { margin-bottom: 0; }
+.prose .pull {
+  font-size: 1.15em; font-weight: 700; color: var(--teal);
+  line-height: 1.44; border-left: 3px solid var(--teal);
+  padding: 2px 0 2px 22px; margin: 36px 0;
+}
+
+/* ── Terminal demo ──────────────────────────────────────── */
+.terminal-section { padding: 0 24px 64px; }
+.terminal-section h2 {
+  font-size: clamp(1.6em, 3.5vw, 2.1em); font-weight: 900;
+  letter-spacing: -.02em; max-width: 620px; margin: 0 auto 12px;
+}
+.terminal-section .intro {
+  font-size: 1.05em; color: var(--ink-mid); max-width: 620px;
+  margin: 0 auto 32px; line-height: 1.72;
+}
+.terminal-wrap {
+  max-width: 680px; margin: 0 auto;
+  background: #1A1612; border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(26,22,18,.12), 0 8px 32px rgba(26,22,18,.22), 0 32px 64px rgba(26,22,18,.14);
+  overflow: hidden;
+}
+.terminal-bar {
+  background: #2A2420; padding: 12px 16px;
+  display: flex; align-items: center; gap: 8px;
+}
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot-r { background: #FF5F57; }
+.dot-y { background: #FFBD2E; }
+.dot-g { background: #28C840; }
+.terminal-title {
+  font-size: .78em; color: rgba(255,255,255,.35);
+  margin-left: 8px; font-family: var(--mono);
+}
+.terminal-body { padding: 24px 28px 28px; min-height: 220px; }
+.cmd-tabs {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px;
+}
+.cmd-tab {
+  padding: 6px 16px; border-radius: 100px;
+  border: 1.5px solid rgba(255,255,255,.12);
+  background: transparent; color: rgba(255,255,255,.5);
+  font-size: .82em; font-family: var(--mono); font-weight: 600;
+  cursor: pointer; transition: all .18s;
+}
+.cmd-tab:hover { border-color: rgba(255,255,255,.3); color: rgba(255,255,255,.8); }
+.cmd-tab.active {
+  background: var(--coral); border-color: var(--coral);
+  color: white; box-shadow: 0 2px 12px rgba(201,79,42,.35);
+}
+.cmd-output { font-family: var(--mono); font-size: .88em; line-height: 1.8; }
+.cmd-line { color: rgba(255,255,255,.9); }
+.cmd-prompt { color: var(--teal); }
+.cmd-comment { color: rgba(255,255,255,.3); font-style: italic; }
+.cmd-result { color: rgba(255,255,255,.55); }
+.cmd-done { color: #7EC8A4; }
+.cmd-tag-c { color: #F4B860; }
+.cmd-id { color: rgba(255,255,255,.4); }
+.cmd-snooze { color: #A78BCA; }
+.cmd-empty { height: 1.8em; }
+
+/* ── Loop diagram ───────────────────────────────────────── */
+.loop-section {
+  max-width: 720px; margin: 0 auto; padding: 0 24px 64px;
+}
+.loop-section h2 {
+  font-size: clamp(1.6em, 3.5vw, 2.1em); font-weight: 900;
+  letter-spacing: -.02em; margin-bottom: 12px;
+}
+.loop-section .intro {
+  font-size: 1.05em; color: var(--ink-mid); margin-bottom: 40px; line-height: 1.72;
+}
+.loop-canvas-wrap {
+  background: white; border-radius: 14px; padding: 40px 24px;
+  box-shadow: 0 1px 2px rgba(26,22,18,.04), 0 4px 16px rgba(26,22,18,.07), 0 16px 48px rgba(26,22,18,.08);
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+}
+.loop-nodes {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; flex-wrap: nowrap; width: 100%; max-width: 560px;
+}
+.loop-node {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  cursor: pointer; padding: 16px 12px; border-radius: 12px;
+  transition: background .18s, transform .18s;
+  flex: 1; min-width: 0;
+}
+.loop-node:hover { background: var(--cream); transform: translateY(-2px); }
+.loop-node.active { background: var(--cream); }
+.node-icon {
+  width: 52px; height: 52px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5em;
+  box-shadow: 0 2px 8px rgba(26,22,18,.1);
+  transition: box-shadow .18s, transform .18s;
+}
+.loop-node:hover .node-icon { transform: scale(1.08); box-shadow: 0 4px 16px rgba(26,22,18,.14); }
+.node-label {
+  font-size: .75em; font-weight: 700; letter-spacing: .04em;
+  color: var(--ink-mid); text-align: center; line-height: 1.3;
+}
+.loop-arrow {
+  font-size: 1.3em; color: var(--grid); flex-shrink: 0;
+  padding: 0 4px; margin-top: -8px;
+}
+.node-detail {
+  max-width: 480px; text-align: center; padding: 20px 16px 0;
+  font-size: .95em; color: var(--ink-mid); line-height: 1.7;
+  min-height: 60px;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .3s ease, transform .3s ease;
+}
+.node-detail.visible { opacity: 1; transform: translateY(0); }
+.node-detail strong { color: var(--ink); }
+
+/* ── How it surfaces ────────────────────────────────────── */
+.surfaces-section { max-width: 720px; margin: 0 auto; padding: 0 24px 64px; }
+.surfaces-section h2 {
+  font-size: clamp(1.6em, 3.5vw, 2.1em); font-weight: 900;
+  letter-spacing: -.02em; margin-bottom: 12px;
+}
+.surfaces-section .intro {
+  font-size: 1.05em; color: var(--ink-mid); margin-bottom: 36px; line-height: 1.72;
+}
+.surface-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 540px) { .surface-cards { grid-template-columns: 1fr; } }
+.surface-card {
+  background: white; border-radius: 12px; padding: 28px 28px 24px;
+  box-shadow: 0 1px 2px rgba(26,22,18,.04), 0 4px 12px rgba(26,22,18,.06);
+  cursor: pointer; transition: transform .18s, box-shadow .18s;
+  border: 1.5px solid transparent;
+}
+.surface-card:hover { transform: translateY(-2px); box-shadow: 0 2px 4px rgba(26,22,18,.06), 0 8px 28px rgba(26,22,18,.10); }
+.surface-card.active { border-color: var(--teal); }
+.card-icon { font-size: 1.8em; margin-bottom: 12px; }
+.card-title { font-size: 1em; font-weight: 800; margin-bottom: 6px; letter-spacing: -.01em; }
+.card-desc { font-size: .9em; color: var(--ink-mid); line-height: 1.6; }
+.card-detail {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--grid);
+  font-size: .88em; color: var(--ink-light); line-height: 1.6;
+  display: none;
+}
+.surface-card.active .card-detail { display: block; }
+
+/* ── Install ────────────────────────────────────────────── */
+.install-section { max-width: 680px; margin: 0 auto; padding: 0 24px 80px; }
+.install-section h2 {
+  font-size: clamp(1.6em, 3.5vw, 2.1em); font-weight: 900;
+  letter-spacing: -.02em; margin-bottom: 12px;
+}
+.install-section .intro {
+  font-size: 1.05em; color: var(--ink-mid); margin-bottom: 32px; line-height: 1.72;
+}
+.install-steps { display: flex; flex-direction: column; gap: 16px; }
+.install-step {
+  background: white; border-radius: 12px; padding: 24px 28px;
+  box-shadow: 0 1px 2px rgba(26,22,18,.04), 0 4px 12px rgba(26,22,18,.06);
+  display: grid; grid-template-columns: 32px 1fr; gap: 16px; align-items: start;
+}
+.step-num {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--ink); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .78em; font-weight: 800; flex-shrink: 0; margin-top: 2px;
+}
+.step-body h3 { font-size: 1em; font-weight: 700; margin-bottom: 6px; }
+.step-body p { font-size: .92em; color: var(--ink-mid); line-height: 1.65; margin-bottom: 10px; }
+.step-body p:last-child { margin-bottom: 0; }
+code, .step-code {
+  font-family: var(--mono);
+  background: var(--cream); border-radius: 6px;
+  padding: 2px 7px; font-size: .87em; color: var(--coral);
+  border: 1px solid var(--grid);
+}
+.step-block {
+  font-family: var(--mono); font-size: .84em;
+  background: #1A1612; color: rgba(255,255,255,.82);
+  border-radius: 8px; padding: 14px 18px; line-height: 1.9;
+  margin-top: 8px; overflow-x: auto;
+  white-space: pre;
+}
+.step-block .c { color: rgba(255,255,255,.3); }
+
+/* ── Footer ─────────────────────────────────────────────── */
+footer {
+  text-align: center; padding: 48px 24px;
+  font-size: .84em; color: var(--ink-light); border-top: 1px solid var(--grid);
+}
+footer a { color: var(--teal); text-decoration: none; font-weight: 600; }
+footer a:hover { text-decoration: underline; }
+
+</style>
+</head>
+<body>
+
+<!-- ── Hero ──────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="eyebrow">tasking</div>
+  <h1>A <em>loop,</em><br>not a list.</h1>
+  <p class="subtitle">
+    Tasks go in fast. The system surfaces them to you — in your terminal,
+    in Claude — rather than waiting for you to remember to look.
+  </p>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Why ───────────────────────────────────────────────── -->
+<section class="prose">
+  <div class="section-label">The problem</div>
+  <h2>Todo apps assume you'll go check them.</h2>
+  <p>
+    They assume you'll remember the app exists. That you'll open it.
+    That you'll scan through it at the right moment. That you'll
+    connect what you see to what you're working on right now.
+  </p>
+  <p class="pull">
+    For ADHD brains, that chain breaks at the first link.
+  </p>
+  <p>
+    tasking works the other way. You capture fast — one command, two seconds,
+    no context switch. Then the system comes to you. Tasks appear when you
+    open a terminal tab. Tasks flagged <code>[c]</code> surface in Claude's
+    context before you even speak. The loop is always running.
+  </p>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Terminal demo ─────────────────────────────────────── -->
+<section class="terminal-section">
+  <div class="section-label">How it works</div>
+  <h2>Everything from one command.</h2>
+  <p class="intro">
+    Click a command to see what it does. All of this runs locally —
+    no accounts, no sync, no cloud.
+  </p>
+
+  <div class="terminal-wrap">
+    <div class="terminal-bar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-y"></div>
+      <div class="dot dot-g"></div>
+      <span class="terminal-title">— tasking</span>
+    </div>
+    <div class="terminal-body">
+      <div class="cmd-tabs">
+        <button class="cmd-tab active" onclick="showCmd('capture')">capture</button>
+        <button class="cmd-tab" onclick="showCmd('list')">list</button>
+        <button class="cmd-tab" onclick="showCmd('snooze')">snooze</button>
+        <button class="cmd-tab" onclick="showCmd('claude')">claude flag</button>
+        <button class="cmd-tab" onclick="showCmd('standup')">standup</button>
+      </div>
+      <div class="cmd-output" id="cmd-output"></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Loop diagram ──────────────────────────────────────── -->
+<section class="loop-section">
+  <div class="section-label">Architecture</div>
+  <h2>Four pieces. One loop.</h2>
+  <p class="intro">
+    Click each node to see what it does. Everything connects through
+    a persistent MCP server running locally on port 5055.
+  </p>
+
+  <div class="loop-canvas-wrap">
+    <div class="loop-nodes">
+      <div class="loop-node" onclick="showNode('capture')" id="node-capture">
+        <div class="node-icon" style="background:#FFF3E8;">⌨️</div>
+        <div class="node-label">t &lt;text&gt;</div>
+      </div>
+      <div class="loop-arrow">→</div>
+      <div class="loop-node" onclick="showNode('db')" id="node-db">
+        <div class="node-icon" style="background:#E8F4F1;">🗄️</div>
+        <div class="node-label">postgres</div>
+      </div>
+      <div class="loop-arrow">→</div>
+      <div class="loop-node" onclick="showNode('surface')" id="node-surface">
+        <div class="node-icon" style="background:#EEF4FF;">🔁</div>
+        <div class="node-label">hooks</div>
+      </div>
+      <div class="loop-arrow">→</div>
+      <div class="loop-node" onclick="showNode('rhizome')" id="node-rhizome">
+        <div class="node-icon" style="background:#F4EEF8;">🌿</div>
+        <div class="node-label">rhizome</div>
+      </div>
+    </div>
+    <div class="node-detail" id="node-detail">
+      Click a node to learn more.
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Surfaces ───────────────────────────────────────────── -->
+<section class="surfaces-section">
+  <div class="section-label">Where tasks appear</div>
+  <h2>The system comes to you.</h2>
+  <p class="intro">
+    You never have to open an app or remember to check. Click to see
+    how each surface works.
+  </p>
+  <div class="surface-cards">
+    <div class="surface-card" onclick="toggleCard(this)">
+      <div class="card-icon">🖥️</div>
+      <div class="card-title">Terminal tab</div>
+      <div class="card-desc">Tasks appear when you open a new tab — global and current-repo local.</div>
+      <div class="card-detail">
+        A Stop hook runs after every Claude response and every new terminal session.
+        It shows today's tasks with a 5-minute cooldown so it's present but not noisy.
+        Scoped tasks appear only in the right repo.
+      </div>
+    </div>
+    <div class="surface-card" onclick="toggleCard(this)">
+      <div class="card-icon">🤖</div>
+      <div class="card-title">Claude context</div>
+      <div class="card-desc">Tasks tagged <code>[c]</code> surface before every Claude response — no prompting needed.</div>
+      <div class="card-detail">
+        A UserPromptSubmit hook injects flagged tasks as additional context before
+        Claude reads your message. Claude sees what you're tracking without you
+        having to mention it. Use <code>t c &lt;text&gt;</code> to flag a task.
+      </div>
+    </div>
+    <div class="surface-card" onclick="toggleCard(this)">
+      <div class="card-icon">💬</div>
+      <div class="card-title">Claude Desktop</div>
+      <div class="card-desc">The MCP server connects directly — Claude Desktop reads and writes tasks natively.</div>
+      <div class="card-detail">
+        Add <code>"tasking": {"url": "http://localhost:5055/mcp"}</code> to your
+        claude_desktop_config.json. Claude can then call add, complete, snooze,
+        standup, and more as native tools — no copy-paste required.
+      </div>
+    </div>
+    <div class="surface-card" onclick="toggleCard(this)">
+      <div class="card-icon">🌿</div>
+      <div class="card-title">Knowledge graph</div>
+      <div class="card-desc">Every lifecycle event writes an edge — adds, completes, snoozes, git commits.</div>
+      <div class="card-detail">
+        Tasks trace into rhizome-alkahest as edges. Snooze patterns accumulate
+        as signal — a task snoozed three times is asking something. Commits that
+        reference <code>#N</code> link automatically via a global post-commit hook.
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Scoping ────────────────────────────────────────────── -->
+<section class="prose">
+  <div class="section-label">Scoping</div>
+  <h2>Global or local to a repo.</h2>
+  <p>
+    Tasks are global by default — visible everywhere. Run <code>t c</code>
+    from inside a git repo and the task automatically scopes to that repo,
+    appearing only when you're working there.
+  </p>
+  <p>
+    <code>t mv &lt;id&gt;</code> toggles a task between local and global.
+    Claude-flagged tasks default to local because they're almost always
+    about your current context.
+  </p>
+  <p class="pull">
+    The task knows where it belongs. You don't have to manage it.
+  </p>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Install ───────────────────────────────────────────── -->
+<section class="install-section">
+  <div class="section-label">Get started</div>
+  <h2>One script, then it runs forever.</h2>
+  <p class="intro">
+    Requires Node.js and PostgreSQL running locally.
+    install.sh is idempotent — safe to run again if anything changes.
+  </p>
+
+  <div class="install-steps">
+    <div class="install-step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>Clone and install</h3>
+        <div class="step-block"><span class="c"># clone the repo</span>
+git clone https://github.com/unity-hallie/tasking
+cd tasking
+
+<span class="c"># one-shot installer: db, server, CLI, git hook, launchd</span>
+bash install.sh</div>
+      </div>
+    </div>
+
+    <div class="install-step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>Connect Claude Desktop <span style="font-weight:400;color:var(--ink-light)">(optional)</span></h3>
+        <p>Add the MCP server to your Claude Desktop config:</p>
+        <div class="step-block">{
+  "mcpServers": {
+    "tasking": { "url": "http://localhost:5055/mcp" }
+  }
+}</div>
+      </div>
+    </div>
+
+    <div class="install-step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>Add Claude Code hooks <span style="font-weight:400;color:var(--ink-light)">(optional)</span></h3>
+        <p>For tasks to surface in Claude Code sessions, add to <code>~/.claude/settings.json</code>:</p>
+        <div class="step-block"><span class="c"># UserPromptSubmit — injects [c] tasks before each response</span>
+tasks=$(t claude_tasks 2>/dev/null)
+if [ -n "$tasks" ] && [ "$tasks" != 'No claude-tagged tasks.' ]; then
+  printf '{"hookSpecificOutput": {"hookEventName":
+    "UserPromptSubmit", "additionalContext":
+    "Tasks flagged for your awareness:\n%s"}}' "$tasks"
+fi</div>
+      </div>
+    </div>
+
+    <div class="install-step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>Start capturing</h3>
+        <div class="step-block"><span class="c"># add a task</span>
+t pick up thread on the mesh shader
+
+<span class="c"># add a task flagged for Claude (scoped to current repo)</span>
+t c look at the particle lifetime issue
+
+<span class="c"># see today's tasks</span>
+t</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ── Signal ─────────────────────────────────────────────── -->
+<section class="prose" style="padding-bottom: 80px;">
+  <div class="section-label">Key signals</div>
+  <h2>What to watch for.</h2>
+  <p>
+    The system is more useful when you read its patterns, not just its tasks.
+  </p>
+  <p>
+    A task snoozed three or more times is usually blocked, too big, or
+    something you're avoiding. That's worth naming, not just rescheduling.
+  </p>
+  <p>
+    <code>[c]</code> tasks that accumulate without resolution mean Claude
+    is aware of something you haven't addressed. Either act on them or
+    cancel them — ambiguity has a cost.
+  </p>
+  <p class="pull">
+    The loop works best when it stays clean. Done means done. Snoozed means
+    a specific date. Cancelled means it was never real.
+  </p>
+  <p>
+    Commits referencing <code>#N</code> write edges in rhizome automatically.
+    Over time the graph shows you what you actually worked on versus what
+    you planned to.
+  </p>
+</section>
+
+<footer>
+  <p>
+    <a href="https://github.com/unity-hallie/tasking">github</a>
+    &nbsp;·&nbsp;
+    MCP server on <code>localhost:5055</code>
+    &nbsp;·&nbsp;
+    <a href="../CLAUDE.md">CLAUDE.md</a>
+  </p>
+</footer>
+
+<script>
+// ── Terminal demo ─────────────────────────────────────────
+const CMDS = {
+  capture: [
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't look at the particle lifetime issue' },
+    { t: 'empty' },
+    { t: 'result', text: '[56] • look at the particle lifetime issue  (2026-03-23)' },
+    { t: 'empty' },
+    { t: 'comment', text: '# That\'s it. Under 2 seconds. No context switch.' },
+    { t: 'empty' },
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't c review the shader on friday' },
+    { t: 'empty' },
+    { t: 'result', text: '[57] • review the shader [c] @ghostty  (2026-03-27)' },
+    { t: 'empty' },
+    { t: 'comment', text: '# -c flags for Claude. Scoped to current repo. Snoozed to friday.' },
+  ],
+  list: [
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't' },
+    { t: 'empty' },
+    { t: 'done', text: '[47] • make AI language intro  @language-station  (2026-03-27)' },
+    { t: 'result', text: '[56] • look at the particle lifetime issue  (2026-03-23)' },
+    { t: 'tag', text: '[57] • review the shader [c] @ghostty  (2026-03-27)' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Global tasks + tasks scoped to this repo.' },
+    { t: 'comment', text: '# [c] tasks will also appear in Claude\'s context.' },
+  ],
+  snooze: [
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't snooze 56 monday' },
+    { t: 'empty' },
+    { t: 'snooze', text: 'Snoozed: [56] • look at the particle lifetime issue  (2026-03-30)' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Natural language: tomorrow, friday, next week, monday...' },
+    { t: 'empty' },
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't done 57' },
+    { t: 'empty' },
+    { t: 'done', text: 'Done: [57] ✓ review the shader  (2026-03-27)' },
+  ],
+  claude: [
+    { t: 'comment', text: '# Before every Claude response, flagged tasks surface automatically.' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Tasks flagged for your awareness:' },
+    { t: 'tag', text: '[57] • review the shader [c] @ghostty  (2026-03-27)' },
+    { t: 'tag', text: '[8]  • add permission checking to act-as link [c] @dean  (2026-03-20)' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Claude sees this. You don\'t have to mention it.' },
+    { t: 'empty' },
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't c check the mesh shader memory leak' },
+    { t: 'empty' },
+    { t: 'result', text: '[58] • check the mesh shader memory leak [c] @ghostty  (2026-03-23)' },
+  ],
+  standup: [
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't standup' },
+    { t: 'empty' },
+    { t: 'result', text: '**Yesterday / recent:**' },
+    { t: 'done', text: '✓ fix bare time parsing in t snooze' },
+    { t: 'done', text: '✓ decide what the thread system becomes  (qigong-for-claude)' },
+    { t: 'done', text: '✓ surface Canvas messages for advisors/staff  (ueu-dean-extension)' },
+    { t: 'empty' },
+    { t: 'result', text: '**Today / up next:**' },
+    { t: 'result', text: '• look at the particle lifetime issue' },
+    { t: 'empty' },
+    { t: 'result', text: '**Blockers:** none' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Draft your standup in one command.' },
+  ],
+};
+
+function showCmd(name) {
+  document.querySelectorAll('.cmd-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  const out = document.getElementById('cmd-output');
+  out.innerHTML = '';
+  const lines = CMDS[name] || [];
+  lines.forEach((l, i) => {
+    setTimeout(() => {
+      const div = document.createElement('div');
+      div.className = 'cmd-line';
+      if (l.t === 'empty') {
+        div.className = 'cmd-empty';
+      } else if (l.t === 'prompt') {
+        div.innerHTML = `<span class="cmd-prompt">${l.text}</span>`;
+      } else if (l.t === 'cmd') {
+        div.innerHTML = `<span class="cmd-prompt">$ </span>${escHtml(l.text)}`;
+      } else if (l.t === 'comment') {
+        div.innerHTML = `<span class="cmd-comment">${escHtml(l.text)}</span>`;
+      } else if (l.t === 'result') {
+        div.innerHTML = `<span class="cmd-result">${escHtml(l.text)}</span>`;
+      } else if (l.t === 'done') {
+        div.innerHTML = `<span class="cmd-done">${escHtml(l.text)}</span>`;
+      } else if (l.t === 'tag') {
+        div.innerHTML = `<span class="cmd-result">${escHtml(l.text).replace('[c]', '<span class="cmd-tag-c">[c]</span>')}</span>`;
+      } else if (l.t === 'snooze') {
+        div.innerHTML = `<span class="cmd-snooze">${escHtml(l.text)}</span>`;
+      }
+      out.appendChild(div);
+    }, i * 60);
+  });
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Loop diagram ─────────────────────────────────────────
+const NODE_DETAILS = {
+  capture: '<strong>t &lt;text&gt;</strong> — capture in under 2 seconds. Bare text adds globally. <code>t c</code> flags for Claude and scopes to the current repo. No modes, no categories, no forms.',
+  db: '<strong>PostgreSQL</strong> — local, always-on. Tasks live in a simple table: body, date, status, project, tags. The MCP server at <code>:5055</code> is the only interface — CLI, Claude Desktop, and Claude Code all talk to it.',
+  surface: '<strong>Hooks</strong> — the loop closes here. A Stop hook shows tasks when you open a terminal tab. A UserPromptSubmit hook injects <code>[c]</code> tasks into Claude\'s context before you speak. The system finds you.',
+  rhizome: '<strong>rhizome-alkahest</strong> — every lifecycle event writes an edge. Add, complete, snooze, cancel, git commit. Snooze patterns accumulate. The graph shows what you actually did versus what you planned.',
+};
+
+let activeNode = null;
+function showNode(name) {
+  if (activeNode) document.getElementById('node-' + activeNode)?.classList.remove('active');
+  activeNode = name;
+  document.getElementById('node-' + name)?.classList.add('active');
+  const detail = document.getElementById('node-detail');
+  detail.innerHTML = NODE_DETAILS[name] || '';
+  detail.classList.add('visible');
+}
+
+// ── Surface cards ─────────────────────────────────────────
+function toggleCard(el) {
+  const wasActive = el.classList.contains('active');
+  document.querySelectorAll('.surface-card').forEach(c => c.classList.remove('active'));
+  if (!wasActive) el.classList.add('active');
+}
+
+// Init
+showCmd('capture');
+</script>
+</body>
+</html>
