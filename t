@@ -154,6 +154,11 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
 } else if (cmd === 'snooze' || cmd === 's') {
   if (!rest[0] || !rest[1]) { console.error('Usage: t snooze <id> <when>  (e.g. 1d, friday, tomorrow, 2026-04-01)'); process.exit(1); }
   call('snooze', { id: Number(rest[0]), to_date: resolveDate(rest[1]) });
+} else if (cmd === 'standup') {
+  // t standup [--hours N]  — draft standup from recent done + open tasks
+  const hoursFlag = rest.indexOf('--hours');
+  const hours = hoursFlag !== -1 ? Number(rest[hoursFlag + 1]) : 24;
+  call('standup', { since_hours: hours });
 } else if (cmd === 'log' || cmd === 'l') {
   const f = parseFlags(rest);
   call('log', { body: f.rest.join(' '), project: f.local ? (gitRoot() || undefined) : undefined });
@@ -200,6 +205,7 @@ t — bullet journal task manager
   t notes <id>             show Qwen annotation + blocking relationships
   t list -d                (alias: not yet implemented inline — use t notes <id>)
 
+  t standup [--hours N]    draft standup from recent done + open tasks (default 24h)
   t loop <repo> <msg>      signal a Claude loop in another repo (global [c] task)
   t annotate [--dry-run]   run Qwen annotation batch on open tasks
   t reg <name> <value>     store a secret in Keychain

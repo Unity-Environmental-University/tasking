@@ -302,6 +302,44 @@ async function main() {
     }
   });
 
+  server.tool('standup', 'Generate a standup draft from recent done + open tasks', {
+    since_hours: z.number().optional().describe('Hours back to look for done tasks (default 24)'),
+    project: z.string().optional().describe('Filter to a specific project path'),
+  }, async ({ since_hours = 24, project } = {}) => {
+    const [done, open] = await Promise.all([
+      db.recentDone({ since_hours, project }),
+      db.list({ project }),
+    ]);
+
+    const lines = [];
+    lines.push(`**Yesterday / recent:**`);
+    if (done.length) {
+      done.forEach(t => {
+        const proj = t.project ? ` (${t.project.split('/').pop()})` : '';
+        lines.push(`✓ ${t.body}${proj}`);
+      });
+    } else {
+      lines.push('(nothing recorded)');
+    }
+
+    lines.push('');
+    lines.push(`**Today / up next:**`);
+    const realOpen = open.filter(t => !t.body.startsWith('loop:'));
+    if (realOpen.length) {
+      realOpen.forEach(t => {
+        const proj = t.project ? ` (${t.project.split('/').pop()})` : '';
+        lines.push(`• ${t.body}${proj}`);
+      });
+    } else {
+      lines.push('(nothing scheduled)');
+    }
+
+    lines.push('');
+    lines.push(`**Blockers:** none`);
+
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
   server.tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {}, async () => {
     const tasks = await db.claudeTasks();
     if (!tasks.length) return { content: [{ type: 'text', text: 'No claude-tagged tasks.' }] };

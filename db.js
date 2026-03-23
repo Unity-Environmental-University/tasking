@@ -18,6 +18,7 @@ async function init() {
   // migrations for existing tables
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`).catch(() => {});
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`).catch(() => {});
 }
 
 // status: open | done | cancelled | log | needs-review
@@ -64,8 +65,9 @@ async function getById(id) {
 }
 
 async function setStatus(id, status) {
+  const completedAt = status === 'done' ? 'NOW()' : 'NULL';
   const { rows } = await pool.query(
-    `UPDATE tasks SET status = $2 WHERE id = $1 RETURNING *`,
+    `UPDATE tasks SET status = $2, completed_at = ${completedAt} WHERE id = $1 RETURNING *`,
     [id, status]
   );
   return rows[0];
@@ -111,4 +113,16 @@ async function claudeTasks() {
   return rows;
 }
 
-module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, pool };
+async function recentDone({ since_hours = 24, project } = {}) {
+  const { rows } = await pool.query(
+    `SELECT * FROM tasks
+     WHERE status = 'done'
+       AND ($2::text IS NULL OR project = $2)
+       AND COALESCE(completed_at, created_at) >= NOW() - ($1 || ' hours')::INTERVAL
+     ORDER BY COALESCE(completed_at, created_at) DESC`,
+    [since_hours, project || null]
+  );
+  return rows;
+}
+
+module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, recentDone, pool };
