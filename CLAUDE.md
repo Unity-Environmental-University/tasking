@@ -38,9 +38,10 @@ rhizome-alkahest (postgres: rhizome-alkahest db)
 ## Task anatomy
 
 ```
-[id] • body [c] @project  (date)
-         │        │
-         │        └── local scope (git repo name), absent = global
+[id] • body [c] {source} @project  (date)
+         │        │         │
+         │        │         └── local scope (git repo name), absent = global
+         │        └── {claude} or {claude:hallie} — who created (absent = hallie/human)
          └── claude-tagged: surfaces in my context via UserPromptSubmit hook
 ```
 
@@ -57,13 +58,15 @@ rhizome-alkahest (postgres: rhizome-alkahest db)
 
 ```bash
 t                        # list today (global + current repo local)
+t ls -a                  # list ALL tasks including done/cancelled (history)
 t <text>                 # add global task (bare text)
 t add [-l] [-c] <text>   # add task (-l local, -c claude-tagged)
 t c <text>               # add claude-tagged, defaults local if in git repo (-g for global)
+t edit <id> <new text>   # edit task body in place
 t log <text>             # log entry
 t done <id>              # complete
 t cancel <id>            # cancel
-t snooze <id> <when>     # snooze: 1d, friday, tomorrow, next week, YYYY-MM-DD
+t snooze <id> <when>     # snooze: 1d, 2w, 2mo, friday, tomorrow, next week, YYYY-MM-DD
 t <id> local|l           # scope to current repo
 t <id> global|g          # release to global
 t mv <id>                # toggle between local and global
