@@ -157,6 +157,33 @@ t loop dean "permission probe pattern changed, see task 8"
 
 The `loop:REPONAME` prefix is the convention. The target Claude sees it in their `UserPromptSubmit` hook context on next wake.
 
+## Coordinating on shared tooling
+
+When multiple Claude loops are running across repos, they may all touch the same shared tools (rhizome, edge CLI, t CLI, qigong movements). To avoid duplication or conflict:
+
+**Before starting work on shared tooling:**
+```bash
+edge orient                     # read the field — what's already in motion?
+edge add self working-on <tool> # claim the work
+t loop <other-repos> "working on <tool> — <what>"  # signal if overlapping
+```
+
+**After completing shared tooling work:**
+```bash
+edge add <tool> changed-by <what-you-did>
+t loop <relevant-repos> "updated <tool> — <what changed>"
+```
+
+**The graph is the shared state.** `edge orient` from any repo will show what other instances have claimed or completed. Check it before starting work that touches tools used across repos.
+
+**Repo ownership:**
+- `t` CLI, MCP server, rhizome integration → `tasking` repo
+- `edge` CLI, rhizome schema → check `~/utils/` or ask
+- `qigong` movements → `qigong-for-claude` repo
+- dean extension → `ueu-dean-extension` repo
+
+Work on tooling you own. Signal repos that own the rest.
+
 ## Key signals to watch for
 
 - Tasks snoozed 3+ times: blocked, too big, or avoidance — ask what's actually going on
