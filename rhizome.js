@@ -39,11 +39,12 @@ async function onAdd(task) {
   if (task.tags && task.tags.includes('c')) await edge(s, 'flagged-for', 'claude', { phase: 'fluid' });
 }
 
-async function onComplete(task) {
+async function onComplete(task, note) {
   const s = `task:${task.id}`;
   const date = new Date().toISOString().slice(0, 10);
   await dissolve(s, 'records', task.body);
   await edge(s, 'completed-on', date, { phase: 'salt', notes: task.body });
+  if (note) await edge(s, 'closed-with', note, { phase: 'salt', notes: `closing note: ${note}` });
 }
 
 async function onCancel(task) {

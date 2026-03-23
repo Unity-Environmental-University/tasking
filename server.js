@@ -68,10 +68,11 @@ async function main() {
 
   server.tool('complete', 'Mark a task as done', {
     id: z.number().describe('Task ID'),
-  }, async ({ id }) => {
+    note: z.string().optional().describe('Optional closing note — what changed, what was learned'),
+  }, async ({ id, note }) => {
     const task = await db.setStatus(id, 'done');
     if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
-    rhizome.onComplete(task);
+    rhizome.onComplete(task, note);
     return { content: [{ type: 'text', text: `Done: ${fmt(task)}` }] };
   });
 

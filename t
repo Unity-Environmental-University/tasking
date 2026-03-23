@@ -148,7 +148,8 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
   // t review <id> [@person]  — mark needs-review, create Review: task for person
   call('review', { id: Number(rest[0]), reviewer: rest[1] || undefined });
 } else if (cmd === 'done' || cmd === 'd') {
-  call('complete', { id: Number(rest[0]) });
+  const note = rest.slice(1).join(' ') || undefined;
+  call('complete', { id: Number(rest[0]), note });
 } else if (cmd === 'cancel' || cmd === 'x') {
   call('cancel', { id: Number(rest[0]) });
 } else if (cmd === 'snooze' || cmd === 's') {
@@ -190,7 +191,7 @@ t — bullet journal task manager
   t add [-l] [-c] <text>   add task  (-l local to repo, -c flag for claude)
   t c [-g] <text>          add claude-tagged task (local if in repo, -g for global)
   t log [-l] <text>        add a log/note entry
-  t done <id>              mark done
+  t done <id> [note]       mark done (optional closing note written to rhizome)
   t cancel <id>            cancel
   t review <id> [@person]  mark needs-review, create Review: task for person
   t snooze <id> <when>     snooze: tomorrow, friday, next week, 1d, 2w, YYYY-MM-DD
