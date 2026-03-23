@@ -105,7 +105,17 @@ const [cmd, ...rest] = args;
 if (!cmd || cmd === 'list' || cmd === 'ls') {
   const f = parseFlags(rest);
   const detail = f.rest.includes('-d') || rest.includes('-d');
-  call('list', { project: gitRoot() || undefined, detail: detail || undefined });
+  const all = f.rest.includes('-a') || rest.includes('-a') || rest.includes('--all');
+  if (all) {
+    call('list_all', { project: gitRoot() || undefined });
+  } else {
+    call('list', { project: gitRoot() || undefined, detail: detail || undefined });
+  }
+} else if (cmd === 'edit' || cmd === 'e') {
+  const id = Number(rest[0]);
+  const body = rest.slice(1).join(' ');
+  if (!id || !body) { console.error('Usage: t edit <id> <new text>'); process.exit(1); }
+  call('edit', { id, body });
 } else if (cmd === 'add' || cmd === 'a') {
   const f = parseFlags(rest);
   call('add', {
@@ -187,15 +197,17 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
 t — bullet journal task manager
 
   t                        list today's tasks (global + local repo)
+  t ls -a                  list ALL tasks including done/cancelled (history)
   t <text>                 add a global task (bare text shorthand)
 
   t add [-l] [-c] <text>   add task  (-l local to repo, -c flag for claude)
   t c [-g] <text>          add claude-tagged task (local if in repo, -g for global)
+  t edit <id> <new text>   edit task body
   t log [-l] <text>        add a log/note entry
   t done <id> [note]       mark done (optional closing note written to rhizome)
   t cancel <id>            cancel
   t review <id> [@person]  mark needs-review, create Review: task for person
-  t snooze <id> <when>     snooze: tomorrow, friday, next week, 1d, 2w, YYYY-MM-DD
+  t snooze <id> <when>     snooze: tomorrow, friday, next week, 1d, 2w, 2mo, YYYY-MM-DD
 
   t <id> local|l           scope task to current repo
   t <id> global|g          release task to global

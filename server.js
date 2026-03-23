@@ -124,6 +124,24 @@ async function main() {
     return { content: [{ type: 'text', text: `Moved to ${bucket}: ${fmt(task)}` }] };
   });
 
+  server.tool('edit', 'Edit a task body', {
+    id: z.number().describe('Task ID'),
+    body: z.string().describe('New task text'),
+  }, async ({ id, body }) => {
+    const task = await db.editBody(id, body);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    return { content: [{ type: 'text', text: `Edited: ${fmt(task)}` }] };
+  });
+
+  server.tool('list_all', 'List all tasks including done/cancelled (history view)', {
+    project: z.string().optional().describe('Filter to repo path'),
+    limit: z.number().optional().describe('Max results (default 50)'),
+  }, async ({ project, limit }) => {
+    const tasks = await db.listAll({ project, limit });
+    if (!tasks.length) return { content: [{ type: 'text', text: 'No tasks found.' }] };
+    return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
+  });
+
   server.tool('annotate', 'Run Qwen annotation batch on open tasks (fires in background, logs to annotate.log)', {
     dry_run: z.boolean().optional().describe('If true, print what would happen without writing to rhizome'),
   }, async ({ dry_run }) => {

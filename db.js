@@ -125,4 +125,23 @@ async function recentDone({ since_hours = 24, project } = {}) {
   return rows;
 }
 
-module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, recentDone, pool };
+async function editBody(id, body) {
+  const { rows } = await pool.query(
+    `UPDATE tasks SET body = $2 WHERE id = $1 RETURNING *`,
+    [id, body]
+  );
+  return rows[0];
+}
+
+async function listAll({ project, limit } = {}) {
+  const { rows } = await pool.query(
+    `SELECT * FROM tasks
+     WHERE ($1::text IS NULL OR project IS NULL OR project = $1)
+     ORDER BY id DESC
+     LIMIT $2`,
+    [project || null, limit || 50]
+  );
+  return rows;
+}
+
+module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, pool };
