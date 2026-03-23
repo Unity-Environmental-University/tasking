@@ -61,7 +61,7 @@ function parseFlags(arr) {
 }
 
 function resolveDate(str) {
-  // relative: 2h, 3d, 1w, 2m — or absolute YYYY-MM-DD
+  // relative: 2h, 3d, 1w, 2m — bare words — or absolute YYYY-MM-DD
   if (!str) return null;
   const rel = str.match(/^(\d+)(h|m|d|w)$/);
   if (rel) {
@@ -75,6 +75,26 @@ function resolveDate(str) {
     // hours/minutes: return full ISO datetime so server stores snoozed_until
     if (unit === 'h' || unit === 'm') return d.toISOString();
     return d.toISOString().slice(0, 10);
+  }
+  // bare word aliases
+  const low = str.toLowerCase().trim();
+  const today = new Date();
+  if (low === 'today') return today.toISOString().slice(0, 10);
+  if (low === 'tomorrow') {
+    today.setDate(today.getDate() + 1);
+    return today.toISOString().slice(0, 10);
+  }
+  if (low === 'next week' || low === 'nextweek') {
+    today.setDate(today.getDate() + 7);
+    return today.toISOString().slice(0, 10);
+  }
+  const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
+  const dayIdx = days.indexOf(low);
+  if (dayIdx !== -1) {
+    const cur = today.getDay();
+    const diff = ((dayIdx - cur + 7) % 7) || 7; // next occurrence, never today
+    today.setDate(today.getDate() + diff);
+    return today.toISOString().slice(0, 10);
   }
   return str; // assume YYYY-MM-DD or ISO datetime
 }
@@ -101,6 +121,22 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
     project: f.global ? undefined : (root || undefined),
     tags: ['c'],
   });
+} else if (cmd === 'loop') {
+  // t loop <repo> <message>  — send a cross-repo signal to a Claude loop
+  // Creates a global [c] task with "loop:REPO — MESSAGE" format
+  // The target repo's Claude will see it in their UserPromptSubmit hook context
+  const [targetRepo, ...msgParts] = rest;
+  if (!targetRepo || !msgParts.length) {
+    console.error('Usage: t loop <repo> <message>');
+    console.error('Example: t loop ghostty found something relevant in ocean shaders, check thread:ocean-notes');
+    process.exit(1);
+  }
+  const from = gitRoot() ? gitRoot().split('/').pop() : 'unknown';
+  call('add', {
+    body: `loop:${targetRepo} — ${msgParts.join(' ')} (from ${from})`,
+    project: undefined, // always global
+    tags: ['c'],
+  });
 } else if (cmd === 'notes' || cmd === 'n') {
   call('notes', { id: Number(rest[0]) });
 } else if (cmd === 'block') {
@@ -116,6 +152,7 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
 } else if (cmd === 'cancel' || cmd === 'x') {
   call('cancel', { id: Number(rest[0]) });
 } else if (cmd === 'snooze' || cmd === 's') {
+  if (!rest[0] || !rest[1]) { console.error('Usage: t snooze <id> <when>  (e.g. 1d, friday, tomorrow, 2026-04-01)'); process.exit(1); }
   call('snooze', { id: Number(rest[0]), to_date: resolveDate(rest[1]) });
 } else if (cmd === 'log' || cmd === 'l') {
   const f = parseFlags(rest);
@@ -163,6 +200,7 @@ t — bullet journal task manager
   t notes <id>             show Qwen annotation + blocking relationships
   t list -d                (alias: not yet implemented inline — use t notes <id>)
 
+  t loop <repo> <msg>      signal a Claude loop in another repo (global [c] task)
   t annotate [--dry-run]   run Qwen annotation batch on open tasks
   t reg <name> <value>     store a secret in Keychain
   t keys                   list registered key names
