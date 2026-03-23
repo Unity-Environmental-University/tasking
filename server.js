@@ -413,7 +413,20 @@ function registerTools(server) {
 
     if (!lines.length) lines.push('All clear. No patterns worth flagging.');
 
-    return { content: [{ type: 'text', text: lines.join('\n') }] };
+    // Return both human-readable and structured JSON for programmatic consumers
+    const structured = {
+      avoidance: snoozePatterns,
+      stuck: s.stuck.map(t => ({ id: t.id, body: t.body, age_days: t.age_days, project: t.project })),
+      deferred: s.deferred.map(t => ({ id: t.id, body: t.body, snoozed_to: t.snoozed_to, days_away: t.days_away, project: t.project })),
+      clusters: s.clusters.map(c => ({ repo: c.repo, open_count: parseInt(c.open_count), oldest: c.oldest })),
+      signals: s.signals.map(t => ({ id: t.id, body: t.body })),
+      velocity: s.velocity.map(v => ({ day: v.day, done: parseInt(v.done) })),
+    };
+
+    return { content: [
+      { type: 'text', text: lines.join('\n') },
+      { type: 'text', text: JSON.stringify(structured) },
+    ]};
   });
 
 }
