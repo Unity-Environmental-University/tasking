@@ -321,6 +321,8 @@ footer a:hover { text-decoration: underline; }
         <button class="cmd-tab" onclick="showCmd('snooze')">snooze</button>
         <button class="cmd-tab" onclick="showCmd('claude')">claude flag</button>
         <button class="cmd-tab" onclick="showCmd('standup')">standup</button>
+        <button class="cmd-tab" onclick="showCmd('signal')">signal</button>
+        <button class="cmd-tab" onclick="showCmd('edit')">edit</button>
       </div>
       <div class="cmd-output" id="cmd-output"></div>
     </div>
@@ -519,6 +521,7 @@ t</div>
   <h2>What to watch for.</h2>
   <p>
     The system is more useful when you read its patterns, not just its tasks.
+    Run <code>t signal</code> to surface them all at once.
   </p>
   <p>
     A task snoozed three or more times is usually blocked, too big, or
@@ -621,6 +624,34 @@ const CMDS = {
     { t: 'result', text: '**Blockers:** none' },
     { t: 'empty' },
     { t: 'comment', text: '# Draft your standup in one command.' },
+  ],
+  signal: [
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't signal' },
+    { t: 'empty' },
+    { t: 'result', text: '🔄 AVOIDANCE (snoozed 2+ times)' },
+    { t: 'snooze', text: '  [26] abyss: interference shader  (snoozed 3x: 03-21 → 03-24 → 03-27)' },
+    { t: 'empty' },
+    { t: 'result', text: '⚠ STUCK (open > 3 days, not snoozed forward)' },
+    { t: 'result', text: '  [8] add permission checking to act-as link  (5d old)' },
+    { t: 'empty' },
+    { t: 'result', text: '📍 WORKFRONTS' },
+    { t: 'result', text: '  rhizome-alkahest: 5 open (oldest 2026-03-23)' },
+    { t: 'result', text: '  (global): 3 open (oldest 2026-03-23)' },
+    { t: 'empty' },
+    { t: 'result', text: '📈 VELOCITY (last 7d)' },
+    { t: 'done', text: '  2026-03-23: 22 done' },
+    { t: 'done', text: '  2026-03-20: 33 done' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Patterns worth paying attention to. Avoidance. Stuck. Velocity.' },
+  ],
+  edit: [
+    { t: 'prompt', text: '$ ' },
+    { t: 'cmd', text: 't edit 56 fix the particle lifetime issue in mesh shader' },
+    { t: 'empty' },
+    { t: 'result', text: 'Updated: [56] • fix the particle lifetime issue in mesh shader  (2026-03-23)' },
+    { t: 'empty' },
+    { t: 'comment', text: '# Refine a task without cancelling and re-adding.' },
   ],
 };
 
