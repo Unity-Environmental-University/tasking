@@ -66,7 +66,8 @@ t                        # list today (global + current repo local)
 t ls -a                  # list ALL tasks including done/cancelled (history)
 t <text>                 # add global task (bare text)
 t add [-l] [-c] <text>   # add task (-l local, -c claude-tagged)
-t c <text>               # add claude-tagged, defaults local if in git repo (-g for global)
+t c <text>               # add claude-tagged, source=claude, defaults local if in git repo (-g for global)
+t h <text>               # add on behalf of hallie, source=claude:hallie, composite observer (-g for global)
 t edit <id> <new text>   # edit task body in place
 t log <text>             # log entry
 t cancel <id>            # cancel
