@@ -209,10 +209,12 @@ routes['POST /api/tasks/reply'] = async (req, res, url, id) => {
   });
   await rhizome.onAdd(child);
   await rhizome.onReply(child, parentTask);
-  // flag parent if needs specified
-  if (body.needs) {
-    await db.setAttention(parentTask.id, body.needs);
-    await rhizome.onAttention(parentTask, body.needs);
+  // flag parent for attention: explicit needs, or auto-flag @claude when hallie replies
+  const replySource = body.source || 'hallie';
+  const attnTarget = body.needs || (replySource === 'hallie' ? '@claude' : null);
+  if (attnTarget) {
+    await db.setAttention(parentTask.id, attnTarget);
+    await rhizome.onAttention(parentTask, attnTarget);
   }
   json(res, taskJson(child));
 };
