@@ -23,6 +23,15 @@ async function init() {
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slug TEXT`).catch(() => {});
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS tasks_slug_unique ON tasks (slug) WHERE slug IS NOT NULL`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS thread_read_at TIMESTAMPTZ`).catch(() => {});
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS needs_attention TEXT`).catch(() => {});
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS oncall (
+      id SERIAL PRIMARY KEY,
+      who TEXT NOT NULL,
+      until_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch(() => {});
 }
 
 // status: open | done | cancelled | log | needs-review
@@ -48,6 +57,19 @@ async function list({ date, project } = {}) {
        AND (project IS NULL OR project = $2)
      ORDER BY project NULLS LAST, task_date, id`,
     [d, project || null]
+  );
+  return rows;
+}
+
+async function listAllOpen({ date } = {}) {
+  const d = date || new Date().toISOString().slice(0, 10);
+  const { rows } = await pool.query(
+    `SELECT * FROM tasks
+     WHERE status NOT IN ('done', 'cancelled')
+       AND task_date <= $1
+       AND (snoozed_to IS NULL OR snoozed_to <= $1)
+     ORDER BY project NULLS LAST, task_date, id`,
+    [d]
   );
   return rows;
 }
@@ -254,4 +276,47 @@ async function unreadThreads(project, rhizome) {
   return entries.filter(e => unreadRefs.has(e.ref)).map(e => e.task);
 }
 
-module.exports = { init, add, list, snooze, getById, getBySlug, resolveRef, setSlug, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, markThreadRead, unreadThreads, pool };
+async function setOncall(who, untilAt) {
+  // Clear existing, set new
+  await pool.query(`DELETE FROM oncall`);
+  const { rows } = await pool.query(
+    `INSERT INTO oncall (who, until_at) VALUES ($1, $2) RETURNING *`,
+    [who, untilAt]
+  );
+  return rows[0];
+}
+
+async function getOncall() {
+  const { rows } = await pool.query(
+    `SELECT * FROM oncall WHERE until_at > NOW() ORDER BY created_at DESC LIMIT 1`
+  );
+  return rows[0] || null;
+}
+
+async function clearOncall() {
+  await pool.query(`DELETE FROM oncall`);
+}
+
+async function setAttention(id, who) {
+  const { rows } = await pool.query(
+    `UPDATE tasks SET needs_attention = $2 WHERE id = $1 RETURNING *`,
+    [id, who || null]
+  );
+  return rows[0];
+}
+
+async function attentionTasks(who, project) {
+  // Normalize: @hallie, @h, hallie, h → hallie
+  const normalized = who.replace(/^@/, '').toLowerCase();
+  const variants = normalized === 'h' ? ['hallie', 'h'] : [normalized];
+  const { rows } = await pool.query(
+    `SELECT * FROM tasks
+     WHERE status NOT IN ('done', 'cancelled')
+       AND (LOWER(REPLACE(needs_attention, '@', '')) = ANY($1))
+     ORDER BY task_date, id`,
+    [variants]
+  );
+  return rows;
+}
+
+module.exports = { init, add, list, listAllOpen, snooze, getById, getBySlug, resolveRef, setSlug, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, markThreadRead, unreadThreads, setAttention, attentionTasks, setOncall, getOncall, clearOncall, pool };

@@ -247,4 +247,10 @@ async function getUnreadReplyRoots(entries) {
   }
 }
 
-module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, getBlocking, getAnnotations, getSnoozePatterns, getThread, getReplyCount, getActivity, getUnreadReplyRoots, taskRef };
+async function onAttention(task, who) {
+  const ref = taskRef(task);
+  const obs = observerFor(task.source);
+  await edge(ref, 'needs-attention-from', who, { phase: 'fluid', notes: task.body, observer: obs });
+}
+
+module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, onAttention, getBlocking, getAnnotations, getSnoozePatterns, getThread, getReplyCount, getActivity, getUnreadReplyRoots, taskRef };

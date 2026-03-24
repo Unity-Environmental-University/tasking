@@ -19,7 +19,8 @@ function fmt(task) {
   const claude = task.tags && task.tags.includes('c') ? ' [c]' : '';
   const reviewers = task.tags ? task.tags.filter(t => t.startsWith('@')).join(' ') : '';
   const src = task.source && task.source !== 'hallie' ? ` {${task.source}}` : '';
-  return `[${task.id}] ${sym} ${task.body}${claude}${src}${reviewers ? ' ' + reviewers : ''}${proj}  (${d})`;
+  const attn = task.needs_attention ? ` ⚑${task.needs_attention}` : '';
+  return `[${task.id}] ${sym} ${task.body}${claude}${src}${reviewers ? ' ' + reviewers : ''}${attn}${proj}  (${d})`;
 }
 
 // Shared enrichment — blocking, annotation, reply count for a task.
@@ -47,9 +48,17 @@ function registerTools(server) {
     project: z.string().optional().describe('Repo path to scope locally, null for global'),
     tags: z.array(z.string()).optional().describe('Tags e.g. ["c"] for claude-aware'),
     source: z.string().optional().describe('Who created: hallie (default), claude, claude:hallie (agent on behalf of human)'),
-  }, async ({ body, date, project, tags, source }) => {
+    needs: z.string().optional().describe('Who needs to act on this: @hallie, @h, @claude — flags for attention'),
+  }, async ({ body, date, project, tags, source, needs }) => {
     const task = await db.add(body, { date, project, tags, source });
     rhizome.onAdd(task);
+    // apply attention: explicit --needs, or fall back to oncall
+    const attnTarget = needs || (await db.getOncall())?.who || null;
+    if (attnTarget) {
+      await db.setAttention(task.id, attnTarget);
+      await rhizome.onAttention(task, attnTarget);
+      task.needs_attention = attnTarget;
+    }
     return { content: [{ type: 'text', text: fmt(task) }] };
   });
 
@@ -378,16 +387,24 @@ function registerTools(server) {
     body: z.string().describe('Reply task text'),
     tags: z.array(z.string()).optional().describe('Tags e.g. ["c"]'),
     source: z.string().optional().describe('Who created: hallie (default), claude, claude:hallie'),
-  }, async ({ parent, body, tags, source }) => {
+    needs: z.string().optional().describe('Who needs to act on this: @hallie, @h, @claude — flags the parent task for attention'),
+  }, async ({ parent, body, tags, source, needs }) => {
     const parentTask = await db.resolveRef(parent);
     if (!parentTask) return { content: [{ type: 'text', text: `Parent task "${parent}" not found.` }] };
     // inherit scope from parent
     const child = await db.add(body, { project: parentTask.project, tags, source });
     await rhizome.onAdd(child);
     await rhizome.onReply(child, parentTask);
+    // flag parent for attention: explicit --needs, or fall back to oncall
+    const attnTarget = needs || (await db.getOncall())?.who || null;
+    if (attnTarget) {
+      await db.setAttention(parentTask.id, attnTarget);
+      await rhizome.onAttention(parentTask, attnTarget);
+    }
     const parentRef = rhizome.taskRef(parentTask);
     const childRef = rhizome.taskRef(child);
-    return { content: [{ type: 'text', text: `${childRef} --reply-to--> ${parentRef}\n${fmt(child)}` }] };
+    const attnMsg = attnTarget ? `\n⚑ needs attention from ${attnTarget}` : '';
+    return { content: [{ type: 'text', text: `${childRef} --reply-to--> ${parentRef}\n${fmt(child)}${attnMsg}` }] };
   });
 
   server.tool('thread', 'Show the reply thread rooted at a task (by id or slug)', {
@@ -421,6 +438,67 @@ function registerTools(server) {
       lines.push(`  ${fmt(task)}  ↩ ${count} repl${count === 1 ? 'y' : 'ies'}`);
     }
     return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+  server.tool('attention', 'Show tasks that need attention from someone (e.g. @hallie, @claude)', {
+    who: z.string().describe('Who to filter for: @hallie, @h, @claude, etc.'),
+    project: z.string().optional().describe('Repo path to scope locally'),
+  }, async ({ who, project }) => {
+    const tasks = await db.attentionTasks(who, project || null);
+    if (!tasks.length) return { content: [{ type: 'text', text: `No tasks need attention from ${who}.` }] };
+    const lines = [`Tasks needing ${who}:`];
+    for (const task of tasks) {
+      lines.push(`  ${fmt(task)}`);
+      const extra = await enrichLines(task);
+      for (const l of extra) lines.push(`  ${l}`);
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+  server.tool('flag', 'Flag a task as needing attention from someone', {
+    id: z.number().describe('Task ID'),
+    needs: z.string().describe('Who needs to act: @hallie, @h, @claude'),
+  }, async ({ id, needs }) => {
+    const task = await db.getById(id);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    await db.setAttention(id, needs);
+    await rhizome.onAttention(task, needs);
+    return { content: [{ type: 'text', text: `⚑ ${fmt({ ...task, needs_attention: needs })}` }] };
+  });
+
+  server.tool('unflag', 'Clear the attention flag on a task', {
+    id: z.number().describe('Task ID'),
+  }, async ({ id }) => {
+    const task = await db.getById(id);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    await db.setAttention(id, null);
+    return { content: [{ type: 'text', text: `Cleared: ${fmt({ ...task, needs_attention: null })}` }] };
+  });
+
+  server.tool('oncall', 'Set or check who is on-call — new tasks auto-flag for this person', {
+    who: z.string().optional().describe('Who is on call: @hallie, @claude, etc. Omit to check current.'),
+    duration: z.string().optional().describe('How long: 1h, 2h, 30m, etc. Default 1h. Use "off" to clear.'),
+  }, async ({ who, duration }) => {
+    // Check current
+    if (!who && !duration) {
+      const current = await db.getOncall();
+      if (!current) return { content: [{ type: 'text', text: 'No one on call.' }] };
+      const remaining = Math.round((new Date(current.until_at) - Date.now()) / 60000);
+      return { content: [{ type: 'text', text: `On call: ${current.who} (${remaining}m remaining)` }] };
+    }
+    // Clear
+    if (duration === 'off' || who === 'off') {
+      await db.clearOncall();
+      return { content: [{ type: 'text', text: 'On-call cleared.' }] };
+    }
+    // Set
+    const dur = duration || '1h';
+    const match = dur.match(/^(\d+)(h|m|min)$/);
+    if (!match) return { content: [{ type: 'text', text: `Invalid duration: ${dur}. Use e.g. 1h, 30m.` }] };
+    const ms = match[2] === 'h' ? parseInt(match[1]) * 3600000 : parseInt(match[1]) * 60000;
+    const untilAt = new Date(Date.now() + ms);
+    await db.setOncall(who, untilAt.toISOString());
+    return { content: [{ type: 'text', text: `⚑ ${who} on call until ${untilAt.toLocaleTimeString()} (${dur})` }] };
   });
 
   server.tool('activity', 'Show the full arc of a task — what touched it, when, from whom', {

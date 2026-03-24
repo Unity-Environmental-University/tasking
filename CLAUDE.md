@@ -14,12 +14,13 @@ The goal is ADHD-compatible: the system comes to you, not the other way around.
 
 ```
 PostgreSQL (tasking db)
-  └── tasks table
+  └── tasks table (+ needs_attention column)
+  └── oncall table (who, until_at — auto-expires)
 
 MCP HTTP server — port 5055
   └── tools: add, list, list_all, edit, snooze, complete, cancel, log, move,
              block, unblock, notes, review, signal, standup, annotate,
-             key, reply, thread, activity,
+             key, reply, thread, activity, attention, flag, unflag, oncall,
              claude_tasks, trello_view, rhizome_edge, context_push, teams_message
   └── launchd: com.hlarsson.tasking (always running)
   └── per-request McpServer instances (safe for concurrent clients)
@@ -42,9 +43,10 @@ rhizome-alkahest (postgres: rhizome-alkahest db)
 ## Task anatomy
 
 ```
-[id] • body [c] {source} @project  (date)
-         │        │         │
-         │        │         └── local scope (git repo name), absent = global
+[id] • body [c] {source} ⚑@who @project  (date)
+         │        │        │       │
+         │        │        │       └── local scope (git repo name), absent = global
+         │        │        └── needs attention from @who (absent = no flag)
          │        └── {claude} or {claude:hallie} — who created (absent = hallie/human)
          └── claude-tagged: surfaces in my context via UserPromptSubmit hook
 ```
@@ -65,7 +67,7 @@ rhizome-alkahest (postgres: rhizome-alkahest db)
 t                        # list today (global + current repo local)
 t ls -a                  # list ALL tasks including done/cancelled (history)
 t <text>                 # add global task (bare text)
-t add [-l] [-c] <text>   # add task (-l local, -c claude-tagged)
+t add [-l] [-c] [--needs @h] <text>  # add task (-l local, -c claude, --needs @who)
 t c <text>               # add claude-tagged, source=claude, defaults local if in git repo (-g for global)
 t h <text>               # add on behalf of hallie, source=claude:hallie, composite observer (-g for global)
 t edit <id> <new text>   # edit task body in place
@@ -80,6 +82,14 @@ t review <id> [@person]  # mark needs-review, create Review: task for person
 t block <id> <id2>       # mark task as blocking another
 t unblock <id> <id2>     # remove blocking relationship
 t notes <id>             # show Qwen annotation + blocking relationships
+t reply <id> <text>      # reply to a task (--needs @h to flag for attention)
+t thread <id>            # show reply thread (marks as read)
+t attn [@who]            # show tasks needing attention (default @hallie)
+t flag <id> [@who]       # flag task for someone's attention
+t unflag <id>            # clear attention flag
+t oncall @h 1h           # set on-call default (auto-flags new tasks/replies)
+t oncall                 # check who's on call
+t oncall off             # clear on-call
 t signal                 # surface patterns: stuck, avoidance, clusters, velocity
 t standup [--hours N]    # draft standup from recent done + open tasks
 t loop <repo> <msg>      # signal a Claude loop in another repo
@@ -113,6 +123,7 @@ Every task lifecycle event writes an edge to `rhizome-alkahest`:
 | snooze | `task:N --snoozed-to--> date` | fluid |
 | move | `task:N --scoped-to--> /path` | fluid |
 | block | `task:A --blocks--> task:B` | fluid |
+| flag/needs | `task:N --needs-attention-from--> @who` | fluid |
 | annotate | `task:N --annotated-by--> qwen` | fluid |
 | git commit (refs #N) | `task:N --has-commit--> commit:SHA` | fluid |
 | git commit (any) | `commit:SHA --in-repo--> repo-name` | fluid |
@@ -122,6 +133,20 @@ Observer is routed by `task.source`: hallie's tasks → `hallie` observer, Claud
 **When Claude adds a task**, always pass `source: 'claude'` to the `add` MCP tool. When adding on behalf of Hallie (e.g. capturing something she said), pass `source: 'claude:hallie'`. Never omit source — null defaults to hallie, which misattributes Claude's work.
 
 Completed tasks dissolve their `records` edge. Snooze patterns accumulate — multiple `snoozed-to` edges on the same task are a signal worth reading. `t signal` surfaces these patterns along with stuck tasks, workfront clusters, and completion velocity.
+
+## Attention routing
+
+Tasks can be flagged for someone's attention with `--needs @who` or `t flag`. This answers "who needs to act next?" — not just "what's unread?"
+
+**Explicit:** `t reply 145 "stuck on X" --needs @hallie` or `t c "check this" --needs @h`
+**On-call default:** `t oncall @hallie 1h` — for the next hour, every new task/reply auto-flags for @hallie. Expires naturally.
+**Inbox:** `t attn` — shows everything flagged for you, across all repos.
+
+`@h` and `@hallie` both resolve to hallie. Claudes can flag each other with `--needs @claude`.
+
+When a Claude creates a task or reply and wants human input, it should use `--needs @hallie`. When it's just a status update, no flag needed. The distinction between "FYI" and "I need you" is the whole point.
+
+**When Claude flags for attention**, use `--needs` on the reply or add tool. Never flag without a reason — the flag means "this thread is waiting on you." Gratuitous flags train the human to ignore them.
 
 ## Secrets
 
@@ -149,6 +174,8 @@ Already done:
 - ~~Review workflow~~ — `t review <id>`, creates Review: task for reviewer
 - ~~Trello integration~~ — `t trello`, reads boards/cards via Keychain credentials
 - ~~Browser extension tools~~ — `rhizome_edge`, `context_push`, `teams_message` for cyber-rhizome
+- ~~Attention routing~~ — `--needs @h`, `t flag`, `t attn`, `t oncall` — tasks route to who needs to act
+- ~~Reply + thread CLI~~ — `t reply`, `t thread` wired through CLI (were MCP-only before)
 
 ## Server management
 
