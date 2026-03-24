@@ -22,6 +22,7 @@ async function init() {
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source TEXT`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slug TEXT`).catch(() => {});
   await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS tasks_slug_unique ON tasks (slug) WHERE slug IS NOT NULL`).catch(() => {});
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS thread_read_at TIMESTAMPTZ`).catch(() => {});
 }
 
 // status: open | done | cancelled | log | needs-review
@@ -225,4 +226,32 @@ async function signal() {
   return { stuck, deferred, clusters, signals, velocity };
 }
 
-module.exports = { init, add, list, snooze, getById, getBySlug, resolveRef, setSlug, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, pool };
+async function markThreadRead(id) {
+  const { rows } = await pool.query(
+    `UPDATE tasks SET thread_read_at = NOW() WHERE id = $1 RETURNING *`,
+    [id]
+  );
+  return rows[0];
+}
+
+// Returns tasks that have new replies since thread_read_at.
+// Scoped to global + current project. Delegates rhizome query to rhizome.js.
+async function unreadThreads(project, rhizome) {
+  const { rows: candidates } = await pool.query(
+    `SELECT * FROM tasks
+     WHERE status NOT IN ('done', 'cancelled')
+       AND (project IS NULL OR project = $1)
+     ORDER BY id`,
+    [project || null]
+  );
+  if (!candidates.length) return [];
+  const entries = candidates.map(t => ({
+    ref: t.slug ? `task:${t.slug}` : `task:${t.id}`,
+    readAt: t.thread_read_at || t.created_at,
+    task: t,
+  }));
+  const unreadRefs = new Set(await rhizome.getUnreadReplyRoots(entries.map(({ ref, readAt }) => ({ ref, readAt }))));
+  return entries.filter(e => unreadRefs.has(e.ref)).map(e => e.task);
+}
+
+module.exports = { init, add, list, snooze, getById, getBySlug, resolveRef, setSlug, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, markThreadRead, unreadThreads, pool };

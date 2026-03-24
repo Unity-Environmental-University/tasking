@@ -223,4 +223,28 @@ async function getSnoozePatterns() {
   }
 }
 
-module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, getBlocking, getAnnotations, getSnoozePatterns, getThread, getReplyCount, getActivity, taskRef };
+// Given an array of { ref, readAt } objects, returns refs that have reply-to edges
+// newer than readAt (or newer than task creation if never read).
+async function getUnreadReplyRoots(entries) {
+  if (!entries.length) return [];
+  try {
+    const results = [];
+    for (const { ref, readAt } of entries) {
+      const { rows } = await pool.query(
+        `SELECT 1 FROM edges
+         WHERE object = $1
+           AND predicate = 'reply-to'
+           AND dissolved_at IS NULL
+           AND created_at > $2
+         LIMIT 1`,
+        [ref, readAt]
+      );
+      if (rows.length) results.push(ref);
+    }
+    return results;
+  } catch (e) {
+    return [];
+  }
+}
+
+module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, getBlocking, getAnnotations, getSnoozePatterns, getThread, getReplyCount, getActivity, getUnreadReplyRoots, taskRef };

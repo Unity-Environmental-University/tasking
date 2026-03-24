@@ -166,6 +166,9 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
 } else if (cmd === 'snooze' || cmd === 's') {
   if (!rest[0] || !rest[1]) { console.error('Usage: t snooze <id> <when>  (e.g. 1d, friday, tomorrow, 2026-04-01)'); process.exit(1); }
   call('snooze', { id: Number(rest[0]), to_date: resolveDate(rest[1]) });
+} else if (cmd === 'unread') {
+  // t unread  — show tasks with new replies since last thread view
+  call('unread', { project: gitRoot() || undefined });
 } else if (cmd === 'signal' || cmd === 'sig') {
   call('signal', {});
 } else if (cmd === 'standup') {
@@ -220,6 +223,7 @@ t — bullet journal task manager
   t block <id> <id2>       same as above
   t notes <id>             show Qwen annotation + blocking relationships
 
+  t unread                  show tasks with new replies since last thread view
   t signal                  surface patterns: stuck, deferred, clusters, velocity
   t standup [--hours N]    draft standup from recent done + open tasks (default 24h)
   t loop <repo> <msg>      signal a Claude loop in another repo (global [c] task)

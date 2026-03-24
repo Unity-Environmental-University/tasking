@@ -405,6 +405,21 @@ function registerTools(server) {
       if (child) lines.push(`${'  '.repeat(depth + 1)}↳ ${fmt(child)}`);
     }
     if (children.length === 0) lines.push('  (no replies)');
+    // mark thread as read
+    await db.markThreadRead(root.id);
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+  server.tool('unread', 'Show tasks with new replies since you last viewed the thread', {
+    project: z.string().optional().describe('Repo path to scope locally (null = global + local combined)'),
+  }, async ({ project }) => {
+    const tasks = await db.unreadThreads(project || null, rhizome);
+    if (!tasks.length) return { content: [{ type: 'text', text: 'No unread threads.' }] };
+    const lines = ['Unread threads:'];
+    for (const task of tasks) {
+      const count = await rhizome.getReplyCount(rhizome.taskRef(task));
+      lines.push(`  ${fmt(task)}  ↩ ${count} repl${count === 1 ? 'y' : 'ies'}`);
+    }
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
