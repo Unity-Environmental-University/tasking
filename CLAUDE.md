@@ -82,6 +82,7 @@ t review <id> [@person]  # mark needs-review, create Review: task for person
 t block <id> <id2>       # mark task as blocking another
 t unblock <id> <id2>     # remove blocking relationship
 t notes <id>             # show Qwen annotation + blocking relationships
+t ask <id> <text>        # reply + auto-flag @hallie — bot asks human, one verb
 t reply <id> <text>      # reply to a task (--needs @h to flag for attention)
 t thread <id>            # show reply thread (marks as read)
 t attn [@who]            # show tasks needing attention (default @hallie)
@@ -146,7 +147,7 @@ Tasks can be flagged for someone's attention with `--needs @who` or `t flag`. Th
 
 When a Claude creates a task or reply and wants human input, it should use `--needs @hallie`. When it's just a status update, no flag needed. The distinction between "FYI" and "I need you" is the whole point.
 
-**When Claude flags for attention**, use `--needs` on the reply or add tool. Never flag without a reason — the flag means "this thread is waiting on you." Gratuitous flags train the human to ignore them.
+**When Claude needs hallie**, use `t ask <id> "question"`. This is the one verb — it replies and flags `@hallie` in one step. Use it when you're stuck, need clarification, or have an idea worth surfacing. Don't use it for status updates — those are just `t reply`. Gratuitous flags train the human to ignore them.
 
 ## Secrets
 
