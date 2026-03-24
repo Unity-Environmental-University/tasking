@@ -42,7 +42,7 @@ async function enrichLines(task) {
 
 function registerTools(server) {
 
-  server.tool('add', 'Add a task', {
+  server.tool('add', 'Add a task. Use needs: "@hallie" to flag for human attention. Always pass source: "claude" when Claude creates tasks.', {
     body: z.string().describe('Task text'),
     date: z.string().optional().describe('ISO date YYYY-MM-DD, defaults to today'),
     project: z.string().optional().describe('Repo path to scope locally, null for global'),
@@ -382,7 +382,7 @@ function registerTools(server) {
     return { content: [{ type: 'text', text: `Key set: task:${task.slug}  (id ${task.id})` }] };
   });
 
-  server.tool('reply', 'Create a reply task under a parent task (by id or slug)', {
+  server.tool('reply', 'Reply to a task. Use needs: "@hallie" to flag for human attention (or use the "ask" shorthand via CLI: t ask <id> <text>). Omit needs for status updates.', {
     parent: z.string().describe('Parent task id (number) or slug'),
     body: z.string().describe('Reply task text'),
     tags: z.array(z.string()).optional().describe('Tags e.g. ["c"]'),
