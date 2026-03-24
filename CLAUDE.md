@@ -19,6 +19,7 @@ PostgreSQL (tasking db)
 MCP HTTP server — port 5055
   └── tools: add, list, list_all, edit, snooze, complete, cancel, log, move,
              block, unblock, notes, review, signal, standup, annotate,
+             key, reply, thread, activity,
              claude_tasks, trello_view, rhizome_edge, context_push, teams_message
   └── launchd: com.hlarsson.tasking (always running)
   └── per-request McpServer instances (safe for concurrent clients)
@@ -116,6 +117,8 @@ Every task lifecycle event writes an edge to `rhizome-alkahest`:
 | git commit (any) | `commit:SHA --in-repo--> repo-name` | fluid |
 
 Observer is routed by `task.source`: hallie's tasks → `hallie` observer, Claude's → `unity-rhizome-alkahest`, composite → both. This enables parallax — seeing where human and agent attention diverge.
+
+**When Claude adds a task**, always pass `source: 'claude'` to the `add` MCP tool. When adding on behalf of Hallie (e.g. capturing something she said), pass `source: 'claude:hallie'`. Never omit source — null defaults to hallie, which misattributes Claude's work.
 
 Completed tasks dissolve their `records` edge. Snooze patterns accumulate — multiple `snoozed-to` edges on the same task are a signal worth reading. `t signal` surfaces these patterns along with stuck tasks, workfront clusters, and completion velocity.
 
