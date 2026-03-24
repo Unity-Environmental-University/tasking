@@ -359,6 +359,50 @@ function registerTools(server) {
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
+  server.tool('key', 'Set or clear a slug (human-readable key) on a task', {
+    id: z.number().describe('Task ID'),
+    slug: z.string().describe('Kebab-case key, e.g. "auth-rework". Will be normalized to kebab-case.'),
+  }, async ({ id, slug }) => {
+    const task = await db.setSlug(id, slug);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    return { content: [{ type: 'text', text: `Key set: task:${task.slug}  (id ${task.id})` }] };
+  });
+
+  server.tool('reply', 'Create a reply task under a parent task (by id or slug)', {
+    parent: z.string().describe('Parent task id (number) or slug'),
+    body: z.string().describe('Reply task text'),
+    tags: z.array(z.string()).optional().describe('Tags e.g. ["c"]'),
+    source: z.string().optional().describe('Who created: hallie (default), claude, claude:hallie'),
+  }, async ({ parent, body, tags, source }) => {
+    const parentTask = await db.resolveRef(parent);
+    if (!parentTask) return { content: [{ type: 'text', text: `Parent task "${parent}" not found.` }] };
+    // inherit scope from parent
+    const child = await db.add(body, { project: parentTask.project, tags, source });
+    await rhizome.onAdd(child);
+    await rhizome.onReply(child, parentTask);
+    const parentRef = rhizome.taskRef(parentTask);
+    const childRef = rhizome.taskRef(child);
+    return { content: [{ type: 'text', text: `${childRef} --reply-to--> ${parentRef}\n${fmt(child)}` }] };
+  });
+
+  server.tool('thread', 'Show the reply thread rooted at a task (by id or slug)', {
+    ref: z.string().describe('Task id (number) or slug'),
+  }, async ({ ref }) => {
+    const root = await db.resolveRef(ref);
+    if (!root) return { content: [{ type: 'text', text: `Task "${ref}" not found.` }] };
+    const rootRef = rhizome.taskRef(root);
+    const children = await rhizome.getThread(rootRef);
+    const lines = [`${fmt(root)}  [root]`];
+    for (const { subject, depth } of children) {
+      // subject is like "task:5" or "task:auth-rework"
+      const idPart = subject.replace(/^task:/, '');
+      const child = /^\d+$/.test(idPart) ? await db.getById(Number(idPart)) : await db.getBySlug(idPart);
+      if (child) lines.push(`${'  '.repeat(depth + 1)}↳ ${fmt(child)}`);
+    }
+    if (children.length === 0) lines.push('  (no replies)');
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
   server.tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {}, async () => {
     const tasks = await db.claudeTasks();
     if (!tasks.length) return { content: [{ type: 'text', text: 'No claude-tagged tasks.' }] };

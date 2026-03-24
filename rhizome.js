@@ -43,8 +43,13 @@ async function dissolve(subject, predicate, object, observer = FALLBACK_OBSERVER
   }
 }
 
+// Use slug as edge subject when available — makes graph edges human-legible
+function taskRef(task) {
+  return task.slug ? `task:${task.slug}` : `task:${task.id}`;
+}
+
 async function onAdd(task) {
-  const s = `task:${task.id}`;
+  const s = taskRef(task);
   const obs = observerFor(task.source);
   const notes = `created ${task.task_date instanceof Date ? task.task_date.toISOString().slice(0,10) : String(task.task_date).slice(0,10)}`;
   await edge(s, 'records', task.body, { phase: 'fluid', notes, observer: obs });
@@ -57,7 +62,7 @@ async function onAdd(task) {
 }
 
 async function onComplete(task, note) {
-  const s = `task:${task.id}`;
+  const s = taskRef(task);
   const obs = observerFor(task.source);
   const date = new Date().toISOString().slice(0, 10);
   await dissolve(s, 'records', task.body, obs);
@@ -66,7 +71,7 @@ async function onComplete(task, note) {
 }
 
 async function onCancel(task) {
-  const s = `task:${task.id}`;
+  const s = taskRef(task);
   const obs = observerFor(task.source);
   const date = new Date().toISOString().slice(0, 10);
   await dissolve(s, 'records', task.body, obs);
@@ -74,7 +79,7 @@ async function onCancel(task) {
 }
 
 async function onSnooze(task) {
-  const s = `task:${task.id}`;
+  const s = taskRef(task);
   const obs = observerFor(task.source);
   const to = task.snoozed_to instanceof Date ? task.snoozed_to.toISOString().slice(0,10) : String(task.snoozed_to).slice(0,10);
   // dissolve old snooze edge if any, write new one
@@ -87,7 +92,7 @@ async function onSnooze(task) {
 }
 
 async function onMove(task) {
-  const s = `task:${task.id}`;
+  const s = taskRef(task);
   const obs = observerFor(task.source);
   // dissolve old scoped-to
   await pool.query(
@@ -132,6 +137,36 @@ async function getAnnotations(id) {
   return rows[0] || null;
 }
 
+async function onReply(childTask, parentTask) {
+  const childRef = taskRef(childTask);
+  const parentRef = taskRef(parentTask);
+  const obs = observerFor(childTask.source);
+  await edge(childRef, 'reply-to', parentRef, { phase: 'fluid', notes: childTask.body, observer: obs });
+}
+
+// Returns flat list of tasks in thread rooted at parentRef, in creation order.
+// Each row has { id, slug, body, status, source, created_at, depth }
+async function getThread(parentRef) {
+  // Traverse reply-to edges upward from parent
+  try {
+    const { rows } = await pool.query(
+      `WITH RECURSIVE thread AS (
+         SELECT subject, 0 as depth FROM edges
+         WHERE object = $1 AND predicate = 'reply-to' AND dissolved_at IS NULL
+         UNION ALL
+         SELECT e.subject, t.depth + 1 FROM edges e
+         JOIN thread t ON e.object = t.subject
+         WHERE e.predicate = 'reply-to' AND e.dissolved_at IS NULL
+       )
+       SELECT subject, depth FROM thread ORDER BY depth, subject`,
+      [parentRef]
+    );
+    return rows; // [{ subject: 'task:5', depth: 0 }, ...]
+  } catch (e) {
+    return [];
+  }
+}
+
 async function getSnoozePatterns() {
   // Tasks snoozed 2+ times — signal of avoidance or being blocked
   // Search across all authority frames (hallie, claude, composite, fallback)
@@ -157,4 +192,4 @@ async function getSnoozePatterns() {
   }
 }
 
-module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, getBlocking, getAnnotations, getSnoozePatterns };
+module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, getBlocking, getAnnotations, getSnoozePatterns, getThread, taskRef };

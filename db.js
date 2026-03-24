@@ -20,6 +20,8 @@ async function init() {
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}'`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ`).catch(() => {});
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS slug TEXT`).catch(() => {});
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS tasks_slug_unique ON tasks (slug) WHERE slug IS NOT NULL`).catch(() => {});
 }
 
 // status: open | done | cancelled | log | needs-review
@@ -63,6 +65,28 @@ async function snooze(id, until) {
 async function getById(id) {
   const { rows } = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [id]);
   return rows[0] || null;
+}
+
+async function getBySlug(slug) {
+  const { rows } = await pool.query(`SELECT * FROM tasks WHERE slug = $1`, [slug]);
+  return rows[0] || null;
+}
+
+// resolveRef accepts either a numeric id (number or numeric string) or a slug string.
+// Returns the task row, or null if not found.
+async function resolveRef(ref) {
+  if (/^\d+$/.test(String(ref))) return getById(Number(ref));
+  return getBySlug(String(ref));
+}
+
+async function setSlug(id, slug) {
+  // Enforce kebab-case: lowercase, spaces→hyphens, strip non-alphanumeric-hyphen
+  const clean = slug.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const { rows } = await pool.query(
+    `UPDATE tasks SET slug = $2 WHERE id = $1 RETURNING *`,
+    [id, clean]
+  );
+  return rows[0];
 }
 
 async function setStatus(id, status) {
@@ -201,4 +225,4 @@ async function signal() {
   return { stuck, deferred, clusters, signals, velocity };
 }
 
-module.exports = { init, add, list, snooze, getById, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, pool };
+module.exports = { init, add, list, snooze, getById, getBySlug, resolveRef, setSlug, setStatus, setProject, moveTask, log, claudeTasks, recentDone, editBody, listAll, signal, pool };
