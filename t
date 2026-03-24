@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 // t — bullet journal CLI for tasking MCP server
-// Usage:
-//   t [list]                    — list today's tasks (global + local repo)
-//   t add [-l] [-c] <text>      — add task (-l = local to repo, -c = claude-tagged)
-//   t c [-l] <text>             — add claude-tagged task
-//   t done <id>                 — mark done
-//   t cancel <id>               — cancel
-//   t snooze <id> <date>        — snooze to date
-//   t log <text>                — log entry
-//   t <id> local|l              — scope task to current repo
-//   t <id> global|g             — release task to global
-//   t mv <id>                   — toggle task between local and global
-//   t <text>                    — bare text: add as global task
+// Run `t help` for full reference. Quick summary:
+//   t                        list today's tasks (global + local repo)
+//   t <text>                 add a global task
+//   t c <text>               add claude-tagged task (local if in repo)
+//   t h <text>               add on behalf of hallie (composite observer)
+//   t done <id>              mark done
+//   t cancel <id>            cancel
+//   t snooze <id> <when>     snooze: tomorrow, friday, 1d, 2w, YYYY-MM-DD
+//   t thread <id>            show reply thread (marks read)
+//   t reply <id> <text>      reply to a task
+//   t unread                 tasks with new replies since last view
+//   t signal                 surface patterns: stuck, deferred, velocity
+//   t standup                draft standup from recent done + open tasks
 
 const { execSync } = require('child_process');
 const BASE = 'http://localhost:5055/mcp';
