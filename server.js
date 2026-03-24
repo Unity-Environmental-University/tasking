@@ -22,6 +22,23 @@ function fmt(task) {
   return `[${task.id}] ${sym} ${task.body}${claude}${src}${reviewers ? ' ' + reviewers : ''}${proj}  (${d})`;
 }
 
+// Shared enrichment — blocking, annotation, reply count for a task.
+// Returns lines to append after fmt(task).
+async function enrichLines(task) {
+  const ref = rhizome.taskRef(task);
+  const [blocking, annotation, replyCount] = await Promise.all([
+    rhizome.getBlocking(task.id),
+    rhizome.getAnnotations(task.id),
+    rhizome.getReplyCount(ref),
+  ]);
+  const lines = [];
+  if (blocking.blocked_by.length) lines.push(`  ↑ blocked by: ${blocking.blocked_by.map(b => `#${b.id}`).join(', ')}`);
+  if (blocking.blocks.length)     lines.push(`  ↓ blocks: ${blocking.blocks.map(b => `#${b.id}`).join(', ')}`);
+  if (replyCount > 0)             lines.push(`  ↩ ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}  (t thread ${task.slug || task.id})`);
+  if (annotation)                 lines.push(`  ✎ ${annotation.notes}`);
+  return lines;
+}
+
 function registerTools(server) {
 
   server.tool('add', 'Add a task', {
@@ -45,12 +62,8 @@ function registerTools(server) {
     if (!tasks.length) return { content: [{ type: 'text', text: 'No open tasks.' }] };
     if (!detail) return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
     const lines = await Promise.all(tasks.map(async t => {
-      const [ann, blocking] = await Promise.all([rhizome.getAnnotations(t.id), rhizome.getBlocking(t.id)]);
-      const row = [fmt(t)];
-      if (blocking.blocked_by.length) row.push(`  ↑ blocked by: ${blocking.blocked_by.map(b => `#${b.id}`).join(', ')}`);
-      if (blocking.blocks.length) row.push(`  ↓ blocks: ${blocking.blocks.map(b => `#${b.id}`).join(', ')}`);
-      if (ann) row.push(`  ✎ ${ann.notes}`);
-      return row.join('\n');
+      const extra = await enrichLines(t);
+      return [fmt(t), ...extra].join('\n');
     }));
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
@@ -177,22 +190,14 @@ function registerTools(server) {
     return { content: [{ type: 'text', text: `Removed: task:${blocker} --blocks--> task:${blocked}` }] };
   });
 
-  server.tool('notes', 'Show Qwen annotation and blocking relationships for a task', {
+  server.tool('notes', 'Show annotation, blocking relationships, and reply count for a task', {
     id: z.number().describe('Task ID'),
   }, async ({ id }) => {
-    const [taskRes, annotation, blocking] = await Promise.all([
-      db.pool.query('SELECT * FROM tasks WHERE id=$1', [id]),
-      rhizome.getAnnotations(id),
-      rhizome.getBlocking(id),
-    ]);
-    if (!taskRes.rows[0]) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
-    const task = taskRes.rows[0];
-    const lines = [fmt(task)];
-    if (blocking.blocked_by.length) lines.push(`  blocked by: ${blocking.blocked_by.map(b => `#${b.id}`).join(', ')}`);
-    if (blocking.blocks.length) lines.push(`  blocks: ${blocking.blocks.map(b => `#${b.id}`).join(', ')}`);
-    if (annotation) lines.push(`  annotation: ${annotation.notes}`);
-    else lines.push(`  annotation: (none)`);
-    return { content: [{ type: 'text', text: lines.join('\n') }] };
+    const task = await db.getById(id);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    const extra = await enrichLines(task);
+    if (!extra.some(l => l.includes('✎'))) extra.push(`  annotation: (none)`);
+    return { content: [{ type: 'text', text: [fmt(task), ...extra].join('\n') }] };
   });
 
   // ── Browser / extension tools ─────────────────────────────────────────────
@@ -400,6 +405,42 @@ function registerTools(server) {
       if (child) lines.push(`${'  '.repeat(depth + 1)}↳ ${fmt(child)}`);
     }
     if (children.length === 0) lines.push('  (no replies)');
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
+  server.tool('activity', 'Show the full arc of a task — what touched it, when, from whom', {
+    ref: z.string().describe('Task id (number) or slug'),
+  }, async ({ ref }) => {
+    const task = await db.resolveRef(ref);
+    if (!task) return { content: [{ type: 'text', text: `Task "${ref}" not found.` }] };
+    const taskRef = rhizome.taskRef(task);
+    // fetch by both numeric and slug refs — edges may predate slug assignment
+    const allRefs = [`task:${task.id}`];
+    if (task.slug) allRefs.push(`task:${task.slug}`);
+    const edges = await rhizome.getActivity(allRefs);
+
+    const lines = [fmt(task)];
+    if (task.slug) lines.push(`  key: task:${task.slug}`);
+    lines.push('');
+
+    if (!edges.length) {
+      lines.push('  (no graph activity recorded)');
+    } else {
+      for (const e of edges) {
+        const ts = new Date(e.created_at).toISOString().slice(0, 16).replace('T', ' ');
+        const dissolved = e.dissolved_at ? '  [dissolved]' : '';
+        const who = e.observer !== 'tasking-system' ? `  [${e.observer}]` : '';
+        const isSubject = allRefs.includes(e.subject);
+        if (isSubject) {
+          lines.push(`  ${ts}  ${e.predicate} → ${e.object}${who}${dissolved}`);
+        } else {
+          // task is the object — something else points to it
+          lines.push(`  ${ts}  ← ${e.predicate} — ${e.subject}${who}${dissolved}`);
+        }
+        if (e.notes) lines.push(`              ${e.notes}`);
+      }
+    }
+
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 

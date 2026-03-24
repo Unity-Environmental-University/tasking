@@ -167,6 +167,37 @@ async function getThread(parentRef) {
   }
 }
 
+async function getReplyCount(taskRef) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) as n FROM edges WHERE object = $1 AND predicate = 'reply-to' AND dissolved_at IS NULL`,
+      [taskRef]
+    );
+    return parseInt(rows[0].n);
+  } catch (e) {
+    return 0;
+  }
+}
+
+// Full arc for a task: all edges where task is subject or object, ordered by time.
+// Accepts an array of refs to handle cases where slug was set after edges were written
+// (edges may use task:5 while current ref is task:my-slug).
+async function getActivity(refs) {
+  const refList = Array.isArray(refs) ? refs : [refs];
+  try {
+    const { rows } = await pool.query(
+      `SELECT subject, predicate, object, phase, observer, notes, created_at, dissolved_at
+       FROM edges
+       WHERE subject = ANY($1) OR object = ANY($1)
+       ORDER BY created_at ASC`,
+      [refList]
+    );
+    return rows;
+  } catch (e) {
+    return [];
+  }
+}
+
 async function getSnoozePatterns() {
   // Tasks snoozed 2+ times — signal of avoidance or being blocked
   // Search across all authority frames (hallie, claude, composite, fallback)
@@ -192,4 +223,4 @@ async function getSnoozePatterns() {
   }
 }
 
-module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, getBlocking, getAnnotations, getSnoozePatterns, getThread, taskRef };
+module.exports = { onAdd, onComplete, onCancel, onSnooze, onMove, onBlock, onUnblock, onReply, getBlocking, getAnnotations, getSnoozePatterns, getThread, getReplyCount, getActivity, taskRef };
