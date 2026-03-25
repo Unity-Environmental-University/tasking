@@ -206,6 +206,17 @@
   .pill.status-done { background: #E6F2EA; color: var(--teal); }
   .pill.status-cancelled { background: #F8E8E8; color: var(--coral); }
   .pill.date { color: var(--ink-faint); font-size: 10px; }
+  .pill.pri-A { background: #FDEEE8; color: var(--coral); font-weight: 700; }
+  .pill.pri-B { background: #FFF3E0; color: var(--brass); font-weight: 600; }
+  .pill.pri-C { background: #F0EBE4; color: var(--ink-mid); }
+
+  /* priority + flag selectors in actions */
+  .priority-btns { display: inline-flex; gap: 2px; margin-right: 4px; }
+  .priority-btns .btn { padding: 3px 8px; font-size: 10px; min-width: 24px; text-align: center; }
+  .priority-btns .btn.active { background: var(--ink); color: var(--warm-white); border-color: var(--ink); }
+
+  .flag-selector { display: inline-flex; gap: 2px; }
+  .flag-selector .btn { padding: 3px 8px; font-size: 10px; }
 
   /* ── actions ─────────────────────────────────── */
   .task-actions {
@@ -396,6 +407,12 @@
     <option value="">no tag</option>
     <option value="c">[c]</option>
   </select>
+  <select id="add-priority">
+    <option value="">pri</option>
+    <option value="A">A</option>
+    <option value="B">B</option>
+    <option value="C">C</option>
+  </select>
   <button class="btn" onclick="addTask()">add</button>
 </div>
 
@@ -451,6 +468,7 @@ function esc(str) {
 
 function renderPills(task) {
   let h = '';
+  if (task.priority) h += `<span class="pill pri-${task.priority}">${task.priority}</span>`;
   if (task.source && task.source !== 'hallie') h += `<span class="pill source">{${task.source}}</span>`;
   if (task.repo) h += `<span class="pill repo">@${task.repo}</span>`;
   if (task.needs_attention) h += `<span class="pill flag">${task.needs_attention}</span>`;
@@ -485,10 +503,20 @@ function renderTask(task) {
       </div>
       <div class="task-actions">
         ${task.status === 'open' ? `
+          <div class="priority-btns">
+            <button class="btn ${task.priority==='A'?'active':''}" onclick="setPriority(event,${task.id},'A')">A</button>
+            <button class="btn ${task.priority==='B'?'active':''}" onclick="setPriority(event,${task.id},'B')">B</button>
+            <button class="btn ${task.priority==='C'?'active':''}" onclick="setPriority(event,${task.id},'C')">C</button>
+            ${task.priority ? `<button class="btn" onclick="setPriority(event,${task.id},null)">\u00d7</button>` : ''}
+          </div>
           <button class="btn done-btn" onclick="doAction(event,${task.id},'done')">done</button>
           <button class="btn" onclick="showSnooze(event,${task.id})">snooze</button>
           <button class="btn" onclick="showReply(event,${task.id})">reply</button>
-          <button class="btn" onclick="doAction(event,${task.id},'${task.needs_attention ? 'unflag' : 'flag'}')">${task.needs_attention ? 'unflag' : 'flag @h'}</button>
+          <div class="flag-selector">
+            <button class="btn" onclick="setFlag(event,${task.id},'@hallie')">⚑ @h</button>
+            <button class="btn" onclick="setFlag(event,${task.id},'@claude')">⚑ @c</button>
+            ${task.needs_attention ? `<button class="btn" onclick="doAction(event,${task.id},'unflag')">unflag</button>` : ''}
+          </div>
           <button class="btn cancel-btn" onclick="doAction(event,${task.id},'cancel')">cancel</button>
         ` : ''}
       </div>
@@ -638,6 +666,18 @@ async function doAction(event, id, action) {
   await refresh();
 }
 
+async function setPriority(event, id, priority) {
+  event.stopPropagation();
+  await api(`/tasks/${id}/priority`, { method: 'POST', body: JSON.stringify({ priority }) });
+  await refresh();
+}
+
+async function setFlag(event, id, who) {
+  event.stopPropagation();
+  await api(`/tasks/${id}/flag`, { method: 'POST', body: JSON.stringify({ who }) });
+  await refresh();
+}
+
 function showSnooze(event, id) {
   event.stopPropagation();
   document.getElementById(`snooze-${id}`).classList.toggle('visible');
@@ -679,9 +719,10 @@ async function addTask() {
   let project = null;
   const repoMatch = body.match(/^@(\S+)\s+(.+)/);
   if (repoMatch) { project = `/Users/hlarsson/repos/${repoMatch[1]}`; body = repoMatch[2]; }
+  const priority = document.getElementById('add-priority').value || null;
   await api('/tasks/add', {
     method: 'POST',
-    body: JSON.stringify({ body, project, tags: tags.value ? [tags.value] : [], source: 'hallie' }),
+    body: JSON.stringify({ body, project, tags: tags.value ? [tags.value] : [], source: 'hallie', priority }),
   });
   input.value = '';
   await refresh();
