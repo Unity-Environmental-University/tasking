@@ -1,9 +1,8 @@
-// trello.js — Trello API client, reads credentials from macOS Keychain
-const { execSync } = require('child_process');
+import { execSync } from 'child_process';
 
-function getKey(name) {
+function getKey(name: string): string | null {
   try {
-    return execSync(`security find-generic-password -a tasking -s ${JSON.stringify(name)} -w`, { stdio: ['pipe','pipe','pipe'], encoding: 'utf8' }).trim();
+    return execSync(`security find-generic-password -a tasking -s ${JSON.stringify(name)} -w`, { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' }).trim();
   } catch {
     return null;
   }
@@ -16,30 +15,24 @@ function creds() {
   return { key, token };
 }
 
-function qs(params) {
-  return new URLSearchParams(params).toString();
-}
-
-async function get(path, params = {}) {
+async function get(path: string, params: Record<string, string> = {}) {
   const { key, token } = creds();
-  const url = `https://api.trello.com/1${path}?${qs({ key, token, ...params })}`;
+  const url = `https://api.trello.com/1${path}?${new URLSearchParams({ key, token, ...params })}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Trello API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
-async function boards() {
+export async function boards() {
   return get('/members/me/boards', { filter: 'open', fields: 'id,name,shortUrl' });
 }
 
-async function lists(boardId) {
+export async function lists(boardId: string) {
   return get(`/boards/${boardId}/lists`, { filter: 'open', fields: 'id,name' });
 }
 
-async function cards(boardId, { listId } = {}) {
+export async function cards(boardId: string, opts: { listId?: string } = {}) {
   const all = await get(`/boards/${boardId}/cards`, { filter: 'open', fields: 'id,name,idList,due,url,desc' });
-  if (listId) return all.filter(c => c.idList === listId);
+  if (opts.listId) return all.filter((c: any) => c.idList === opts.listId);
   return all;
 }
-
-module.exports = { boards, lists, cards };

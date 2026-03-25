@@ -29,8 +29,8 @@ const UNCLEAR_SIGNALS = [
 ];
 
 // Use shared pool modules (separate process = separate connections, but same config)
-const taskingPool = require('./db').pool;
-const rhizomePool = require('./rhizome-pool');
+const taskingPool = require('./dist/db').pool;
+const rhizomePool = require('./dist/rhizome').rhizomePool;
 const OBSERVER = 'tasking-system';
 
 // ── Qwen ────────────────────────────────────────────────────────────────────

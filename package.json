@@ -1,12 +1,23 @@
 {
   "name": "tasking",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Bullet-journal task system — MCP server, CLI, rhizome integration",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
+  "main": "dist/server.js",
+  "bin": {
+    "t": "dist/cli.js"
   },
-  "keywords": ["mcp", "tasks", "cli"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "web": "node dist/web.js",
+    "dev": "tsx src/server.ts",
+    "dev:web": "tsx src/web.ts"
+  },
+  "keywords": [
+    "mcp",
+    "tasks",
+    "cli"
+  ],
   "author": "Hallie Larsson",
   "license": "MIT",
   "type": "commonjs",
@@ -14,5 +25,11 @@
     "@modelcontextprotocol/sdk": "^1.27.1",
     "pg": "^8.20.0",
     "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
   }
 }
