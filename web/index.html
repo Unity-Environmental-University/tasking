@@ -537,9 +537,9 @@ function renderTask(task) {
 
 // ── tab views ──────────────────────────────────
 
-async function loadTab(tab) {
+async function loadTab(tab, preserveExpanded = false) {
   currentTab = tab;
-  expandedId = null;
+  if (!preserveExpanded) expandedId = null;
   const el = document.getElementById('content');
   el.innerHTML = '<div class="loading">loading...</div>';
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
@@ -760,7 +760,18 @@ async function refreshMeta() {
 // ── refresh logic (skips if user is typing) ───
 
 async function refresh() {
-  await Promise.all([loadTab(currentTab), refreshMeta()]);
+  const wasExpanded = expandedId;
+  await Promise.all([loadTab(currentTab, true), refreshMeta()]);
+  if (wasExpanded) {
+    // re-expand and reload thread
+    expandedId = wasExpanded;
+    document.querySelectorAll('.task').forEach(el => {
+      el.classList.toggle('expanded', parseInt(el.dataset.id) === expandedId);
+    });
+    if (document.getElementById(`thread-${wasExpanded}`)) {
+      toggleTask(wasExpanded);
+    }
+  }
 }
 
 async function autoRefresh() {
