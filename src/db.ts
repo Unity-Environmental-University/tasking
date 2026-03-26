@@ -66,12 +66,15 @@ export async function logCall(tool: string, args: Record<string, unknown>, succe
 
 // ── Project resolution from @mentions ────────────────────────────────────
 
+// Returns project path, 'global' for explicit @global, or null for no match
 export async function resolveBodyProject(body: string): Promise<string | null> {
   const match = body.match(/@([a-z0-9_-]+)/i);
   if (!match) return null;
   const name = match[1].toLowerCase();
   // Skip people names
   if (['hallie', 'h', 'claude', 'c'].includes(name)) return null;
+  // Explicit global
+  if (name === 'global' || name === 'g') return 'global';
   const { rows } = await pool.query(
     `SELECT DISTINCT project FROM tasks WHERE project IS NOT NULL AND project LIKE $1 LIMIT 1`,
     [`%/${name}`]

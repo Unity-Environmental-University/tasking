@@ -248,8 +248,9 @@ routes['POST /api/tasks/reply'] = async (req, res, _url, id) => {
   const parentTask = await db.getById(id!);
   if (!parentTask) return json(res, { error: 'not found' }, 404);
   const bodyProject = await db.resolveBodyProject(body.body);
+  const project = bodyProject === 'global' ? null : (bodyProject || parentTask.project);
   const child = await db.add(body.body, {
-    project: bodyProject || parentTask.project,
+    project,
     tags: body.tags || [],
     source: body.source || 'hallie',
   });

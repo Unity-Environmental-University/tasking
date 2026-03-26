@@ -55,7 +55,8 @@ function registerTools(server: McpServer) {
     needs: z.string().optional(),
     priority: z.enum(['A', 'B', 'C']).optional(),
   }, async ({ body, date, project, tags, source, needs, priority }) => {
-    const resolvedProject = project || await db.resolveBodyProject(body);
+    const bodyProject = await db.resolveBodyProject(body);
+    const resolvedProject = project || (bodyProject === 'global' ? null : bodyProject);
     const task = await db.add(body, { date, project: resolvedProject, tags, source, priority });
     rhizome.onAdd(task);
     await applyAttention(task, needs);
@@ -191,9 +192,10 @@ function registerTools(server: McpServer) {
     const parentTask = await db.resolveRef(parent);
     if (!parentTask) return { content: [{ type: 'text', text: `Parent task "${parent}" not found.` }] };
 
-    // Replies inherit parent scope unless body @mentions a different repo
+    // Replies inherit parent scope unless body @mentions a different repo or @global
     const bodyProject = await db.resolveBodyProject(body);
-    const child = await db.add(body, { project: bodyProject || parentTask.project, tags, source });
+    const project = bodyProject === 'global' ? null : (bodyProject || parentTask.project);
+    const child = await db.add(body, { project, tags, source });
     await rhizome.onAdd(child);
     await rhizome.onReply(child, parentTask);
 
