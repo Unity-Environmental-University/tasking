@@ -10,6 +10,18 @@ Tasks go in (low friction). Tasks surface to you (via terminal, Claude Code, Cla
 
 The goal is ADHD-compatible: the system comes to you, not the other way around.
 
+## Arete and hamartia
+
+The system's **arete** (excellence): surfacing what needs attention before you forget it exists. The loop comes to you — hooks, flags, web dashboard. When it works, nothing important drops.
+
+The system's **hamartia** (tragic flaw): it knows what to do but not who it's for. Tasks are organized by status, priority, repo — but not by the person waiting. The task list is shadows on the cave wall. The student who can't find their courses, the advisor drowning in cases — they're the real things casting the shadows.
+
+**Personas** (`t story`) are the turn. A task isn't just work to do — it serves someone. `task:92 --serves--> persona:learning-student` makes the person visible. When three tasks serve the same persona and none have moved, the system can say: "this person is waiting."
+
+**Ions** (proposed, needs alkahest): edges with open valences. `student --learning--> ?` — a need that hasn't found its object yet. When a task fills the blank, the ion bonds to fluid. The gardener's job is noticing these bonds.
+
+Work backwards from who's waiting, not forwards from what's in the queue.
+
 ## Architecture
 
 ```
