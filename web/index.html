@@ -271,6 +271,33 @@
   .thread-reply .reply-source { color: var(--ink-light); font-size: 10px; }
   .thread-reply .reply-time { color: var(--ink-faint); font-size: 10px; float: right; }
 
+  /* thread preview (visible when collapsed) */
+  .thread-preview {
+    margin-top: 6px;
+    padding: 5px 10px;
+    background: var(--cream);
+    border-left: 2px solid var(--grid);
+    border-radius: 0 var(--radius) var(--radius) 0;
+    font-size: 12px;
+    color: var(--ink-mid);
+    line-height: 1.4;
+    max-height: 2.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .thread-preview .preview-source {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-light);
+    margin-right: 4px;
+  }
+  .thread-preview .preview-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+  }
+  .task.expanded .thread-preview { display: none; }
+
   /* ── reply input ─────────────────────────────── */
   .reply-form {
     display: none;
@@ -503,6 +530,11 @@ function renderTask(task) {
         <div class="task-body">
           <div class="task-text">${esc(task.body)}</div>
           <div class="task-meta">${renderPills(task)}</div>
+          ${task.last_reply ? `<div class="thread-preview">
+            <span class="preview-source">${task.last_reply.source && task.last_reply.source !== 'hallie' ? `{${task.last_reply.source}}` : ''}</span>
+            ${esc(task.last_reply.body.slice(0, 150))}${task.last_reply.body.length > 150 ? '…' : ''}
+            <span class="preview-time">${timeAgo(task.last_reply.created_at)}</span>
+          </div>` : ''}
         </div>
       </div>
       <div class="task-actions">

@@ -46,7 +46,18 @@ async function enrichTasks(tasks: any[]) {
       rhizome.getReplyCount(ref),
       rhizome.getTaskPersonas(ref),
     ]);
-    return taskJson(t, { reply_count: replyCount, personas });
+    // Get last reply for preview
+    let lastReply = null;
+    if (replyCount > 0) {
+      const thread = await rhizome.getThread(ref);
+      if (thread.length) {
+        const lastRef = thread[thread.length - 1].subject;
+        const idPart = lastRef.replace('task:', '');
+        const child = /^\d+$/.test(idPart) ? await db.getById(Number(idPart)) : await db.getBySlug(idPart);
+        if (child) lastReply = { id: child.id, body: child.body, source: child.source, created_at: child.created_at };
+      }
+    }
+    return taskJson(t, { reply_count: replyCount, personas, last_reply: lastReply });
   }));
 }
 
