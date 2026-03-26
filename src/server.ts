@@ -315,6 +315,45 @@ function registerTools(server: McpServer) {
     return { content: [{ type: 'text', text: [fmt(task), ...extra].join('\n') }] };
   });
 
+  // ── Stories (personas) ──────────────────────────────────────────────────
+
+  tool('story', 'Attach a persona to a task (task serves persona)', {
+    id: z.number(),
+    persona: z.string().describe('Persona name, e.g. "learning-student", "overwhelmed-advisor"'),
+  }, async ({ id, persona }) => {
+    const task = await db.getById(id);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    const clean = persona.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    await rhizome.onStory(task, clean);
+    return { content: [{ type: 'text', text: `${rhizome.taskRef(task)} --serves--> persona:${clean}` }] };
+  });
+
+  tool('unstory', 'Remove a persona from a task', {
+    id: z.number(),
+    persona: z.string(),
+  }, async ({ id, persona }) => {
+    const task = await db.getById(id);
+    if (!task) return { content: [{ type: 'text', text: `Task ${id} not found.` }] };
+    const clean = persona.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    await rhizome.removeStory(task, clean);
+    return { content: [{ type: 'text', text: `Removed: ${rhizome.taskRef(task)} --serves--> persona:${clean}` }] };
+  });
+
+  tool('stories', 'List all personas and the tasks that serve them', {}, async () => {
+    const personas = await rhizome.getPersonas();
+    if (!personas.length) return { content: [{ type: 'text', text: 'No personas yet. Use t story <id> <persona> to attach one.' }] };
+    const lines: string[] = [];
+    for (const p of personas) {
+      lines.push(`persona:${p.persona}  (${p.task_count} task${p.task_count === 1 ? '' : 's'})`);
+      for (const ref of p.tasks) {
+        const idPart = ref.replace('task:', '');
+        const task = /^\d+$/.test(idPart) ? await db.getById(Number(idPart)) : await db.getBySlug(idPart);
+        if (task) lines.push(`  ${fmt(task)}`);
+      }
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  });
+
   tool('block', 'Mark task A as blocking task B', {
     blocker: z.number(),
     blocked: z.number(),

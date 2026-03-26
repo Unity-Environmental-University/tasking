@@ -206,6 +206,8 @@
   .pill.status-done { background: #E6F2EA; color: var(--teal); }
   .pill.status-cancelled { background: #F8E8E8; color: var(--coral); }
   .pill.date { color: var(--ink-faint); font-size: 10px; }
+  .pill.persona { background: #E8EDF4; color: #3D5A80; font-weight: 500; cursor: pointer; }
+  .pill.persona:hover { background: #D4DCE8; }
   .pill.pri-A { background: #FDEEE8; color: var(--coral); font-weight: 700; }
   .pill.pri-B { background: #FFF3E0; color: var(--brass); font-weight: 600; }
   .pill.pri-C { background: #F0EBE4; color: var(--ink-mid); }
@@ -392,6 +394,7 @@
   <div class="tab active" data-tab="attention">attention <span class="badge" id="attn-count" style="display:none">0</span></div>
   <div class="tab" data-tab="open">all open</div>
   <div class="tab" data-tab="repos">by repo</div>
+  <div class="tab" data-tab="stories">stories</div>
   <div class="tab" data-tab="activity">activity</div>
   <div class="tab" data-tab="signal">signal</div>
   <div class="tab" data-tab="history">history</div>
@@ -473,6 +476,7 @@ function renderPills(task) {
   if (task.repo) h += `<span class="pill repo">@${task.repo}</span>`;
   if (task.needs_attention) h += `<span class="pill flag">${task.needs_attention}</span>`;
   if (task.tags?.includes('c')) h += `<span class="pill claude-tag">[c]</span>`;
+  if (task.personas?.length) task.personas.forEach(p => { h += `<span class="pill persona">♟${p}</span>`; });
   if (task.reply_count > 0) h += `<span class="pill replies">${task.reply_count} repl${task.reply_count === 1 ? 'y' : 'ies'}</span>`;
   if (task.status === 'done') h += `<span class="pill status-done">done</span>`;
   if (task.status === 'cancelled') h += `<span class="pill status-cancelled">cancelled</span>`;
@@ -517,8 +521,13 @@ function renderTask(task) {
             <button class="btn" onclick="setFlag(event,${task.id},'@claude')">⚑ @c</button>
             ${task.needs_attention ? `<button class="btn" onclick="doAction(event,${task.id},'unflag')">unflag</button>` : ''}
           </div>
+          <button class="btn" onclick="showStory(event,${task.id})">♟ story</button>
           <button class="btn cancel-btn" onclick="doAction(event,${task.id},'cancel')">cancel</button>
         ` : ''}
+      </div>
+      <div class="reply-form" id="story-${task.id}">
+        <input type="text" placeholder="persona (e.g. learning-student)" onkeydown="if(event.key==='Enter')submitStory(${task.id},this)">
+        <button class="btn" onclick="submitStory(${task.id},this.previousElementSibling)">attach</button>
       </div>
       <div class="snooze-picker" id="snooze-${task.id}">
         <button class="btn" onclick="doSnooze(event,${task.id},'tomorrow')">tomorrow</button>
@@ -572,6 +581,21 @@ async function loadTab(tab, preserveExpanded = false) {
       html += `</div>`;
     }
     el.innerHTML = html || '<div class="empty">No open tasks.</div>';
+  }
+  else if (tab === 'stories') {
+    const personas = await api('/stories');
+    if (!personas.length) {
+      el.innerHTML = '<div class="empty">No personas yet. Expand a task and click ♟ story to attach one.</div>';
+    } else {
+      let html = '';
+      for (const p of personas) {
+        html += `<div class="repo-group">`;
+        html += `<div class="repo-header">♟ ${esc(p.persona)} (${p.tasks.length} task${p.tasks.length === 1 ? '' : 's'})</div>`;
+        html += p.tasks.map(renderTask).join('');
+        html += `</div>`;
+      }
+      el.innerHTML = html;
+    }
   }
   else if (tab === 'activity') {
     const items = await api('/activity?limit=60');
@@ -675,6 +699,21 @@ async function setPriority(event, id, priority) {
 async function setFlag(event, id, who) {
   event.stopPropagation();
   await api(`/tasks/${id}/flag`, { method: 'POST', body: JSON.stringify({ who }) });
+  await refresh();
+}
+
+function showStory(event, id) {
+  event.stopPropagation();
+  const el = document.getElementById(`story-${id}`);
+  el.classList.toggle('visible');
+  if (el.classList.contains('visible')) el.querySelector('input').focus();
+}
+
+async function submitStory(id, input) {
+  const persona = input.value.trim();
+  if (!persona) return;
+  await api(`/tasks/${id}/story`, { method: 'POST', body: JSON.stringify({ persona }) });
+  input.value = '';
   await refresh();
 }
 

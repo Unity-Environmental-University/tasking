@@ -211,6 +211,55 @@ export async function getSnoozePatterns() {
   }
 }
 
+// ── Stories (personas) ────────────────────────────────────────────────────
+
+export async function onStory(task: Task, persona: string) {
+  const ref = taskRef(task);
+  const obs = observerFor(task.source);
+  await edge(ref, 'serves', `persona:${persona}`, { phase: 'fluid', notes: task.body, observer: obs });
+}
+
+export async function removeStory(task: Task, persona: string) {
+  const ref = taskRef(task);
+  const obs = observerFor(task.source);
+  await dissolve(ref, 'serves', `persona:${persona}`, obs);
+}
+
+export async function getPersonas(): Promise<Array<{ persona: string; task_count: number; tasks: string[] }>> {
+  try {
+    const { rows } = await rhizomePool.query(
+      `SELECT object as persona, COUNT(*) as task_count,
+              array_agg(subject ORDER BY subject) as tasks
+       FROM edges
+       WHERE predicate = 'serves' AND dissolved_at IS NULL
+         AND object LIKE 'persona:%'
+       GROUP BY object
+       ORDER BY COUNT(*) DESC`
+    );
+    return rows.map((r: any) => ({
+      persona: r.persona.replace('persona:', ''),
+      task_count: parseInt(r.task_count),
+      tasks: r.tasks,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function getTaskPersonas(ref: string): Promise<string[]> {
+  try {
+    const { rows } = await rhizomePool.query(
+      `SELECT object FROM edges
+       WHERE subject = $1 AND predicate = 'serves' AND dissolved_at IS NULL
+         AND object LIKE 'persona:%'`,
+      [ref]
+    );
+    return rows.map((r: any) => r.object.replace('persona:', ''));
+  } catch {
+    return [];
+  }
+}
+
 export async function getUnreadReplyRoots(entries: Array<{ ref: string; readAt: string | Date }>) {
   if (!entries.length) return [];
   try {

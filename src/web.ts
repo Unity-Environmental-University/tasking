@@ -42,8 +42,11 @@ function taskJson(task: any, extra: any = {}) {
 async function enrichTasks(tasks: any[]) {
   return Promise.all(tasks.map(async t => {
     const ref = rhizome.taskRef(t);
-    const replyCount = await rhizome.getReplyCount(ref);
-    return taskJson(t, { reply_count: replyCount });
+    const [replyCount, personas] = await Promise.all([
+      rhizome.getReplyCount(ref),
+      rhizome.getTaskPersonas(ref),
+    ]);
+    return taskJson(t, { reply_count: replyCount, personas });
   }));
 }
 
@@ -99,6 +102,45 @@ routes['GET /api/oncall'] = async (_req, res) => {
 };
 
 routes['GET /api/signal'] = async (_req, res) => json(res, await db.signal());
+
+routes['GET /api/stories'] = async (_req, res) => {
+  const personas = await rhizome.getPersonas();
+  // enrich with full task objects
+  const result = [];
+  for (const p of personas) {
+    const tasks = [];
+    for (const ref of p.tasks) {
+      const idPart = ref.replace('task:', '');
+      const task = /^\d+$/.test(idPart) ? await db.getById(Number(idPart)) : await db.getBySlug(idPart);
+      if (task) {
+        const replyCount = await rhizome.getReplyCount(rhizome.taskRef(task));
+        tasks.push(taskJson(task, { reply_count: replyCount }));
+      }
+    }
+    result.push({ persona: p.persona, tasks });
+  }
+  json(res, result);
+};
+
+routes['POST /api/tasks/story'] = async (req, res, _url, id) => {
+  const body = await parseBody(req);
+  if (!body.persona) return json(res, { error: 'persona required' }, 400);
+  const task = await db.getById(id!);
+  if (!task) return json(res, { error: 'not found' }, 404);
+  const clean = body.persona.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  await rhizome.onStory(task, clean);
+  json(res, { persona: clean, task: taskJson(task) });
+};
+
+routes['POST /api/tasks/unstory'] = async (req, res, _url, id) => {
+  const body = await parseBody(req);
+  if (!body.persona) return json(res, { error: 'persona required' }, 400);
+  const task = await db.getById(id!);
+  if (!task) return json(res, { error: 'not found' }, 404);
+  const clean = body.persona.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  await rhizome.removeStory(task, clean);
+  json(res, { persona: clean, removed: true });
+};
 
 routes['GET /api/stats'] = async (_req, res) => {
   const [open, flagged, doneToday, claudeTasks] = await Promise.all([
@@ -240,7 +282,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    const taskAction = url.pathname.match(/^\/api\/tasks\/(\d+)\/(thread|done|cancel|snooze|flag|unflag|reply|priority)$/);
+    const taskAction = url.pathname.match(/^\/api\/tasks\/(\d+)\/(thread|done|cancel|snooze|flag|unflag|reply|priority|story|unstory)$/);
     if (taskAction) {
       const [, idStr, action] = taskAction;
       const key = `${req.method} /api/tasks/${action}`;

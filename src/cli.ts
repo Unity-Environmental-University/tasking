@@ -91,6 +91,7 @@ const KNOWN = new Set([
   'unread', 'signal', 'sig', 'standup',
   'log', 'l', 'reg', 'keys', 'help', '--help', '-h',
   'annotate', 'trello', 'claude_tasks', 'mv',
+  'story', 'unstory', 'stories',
   'A', 'B', 'C',  // priority shortcuts
 ]);
 
@@ -223,6 +224,22 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
   if (!id) { console.error(`Usage: t ${cmd} <id>`); process.exit(1); }
   call('priority', { id, priority: cmd });
 
+// ── Stories (personas) ─────────────────────────────────────────────────
+} else if (cmd === 'story') {
+  const id = Number(rest[0]);
+  const persona = rest.slice(1).join('-');
+  if (!id || !persona) { console.error('Usage: t story <id> <persona>  (e.g. t story 92 learning student)'); process.exit(1); }
+  call('story', { id, persona });
+
+} else if (cmd === 'unstory') {
+  const id = Number(rest[0]);
+  const persona = rest.slice(1).join('-');
+  if (!id || !persona) { console.error('Usage: t unstory <id> <persona>'); process.exit(1); }
+  call('unstory', { id, persona });
+
+} else if (cmd === 'stories') {
+  call('stories', {});
+
 } else if (cmd === 'reg') {
   const [name, value] = rest;
   if (!name || !value) { console.error('Usage: t reg NAME VALUE'); process.exit(1); }
@@ -280,6 +297,10 @@ t — bullet journal task manager
   t oncall @h 1h               set on-call
   t oncall                     check on-call
   t oncall off                 clear on-call
+
+  t story <id> <persona>       attach persona (e.g. t story 92 learning student)
+  t unstory <id> <persona>     remove persona from task
+  t stories                    list all personas and their tasks
 
   t unread                     tasks with new replies since last view
   t signal                     surface patterns: stuck, deferred, velocity

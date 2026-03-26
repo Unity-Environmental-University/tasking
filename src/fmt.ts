@@ -19,12 +19,14 @@ export function fmt(task: Task): string {
 
 export async function enrichLines(task: Task): Promise<string[]> {
   const ref = rhizome.taskRef(task);
-  const [blocking, annotation, replyCount] = await Promise.all([
+  const [blocking, annotation, replyCount, personas] = await Promise.all([
     rhizome.getBlocking(task.id),
     rhizome.getAnnotations(task.id),
     rhizome.getReplyCount(ref),
+    rhizome.getTaskPersonas(ref),
   ]);
   const lines: string[] = [];
+  if (personas.length)            lines.push(`  ♟ serves: ${personas.join(', ')}`);
   if (blocking.blocked_by.length) lines.push(`  ↑ blocked by: ${blocking.blocked_by.map(b => `#${b.id}`).join(', ')}`);
   if (blocking.blocks.length)     lines.push(`  ↓ blocks: ${blocking.blocks.map(b => `#${b.id}`).join(', ')}`);
   if (replyCount > 0)             lines.push(`  ↩ ${replyCount} repl${replyCount === 1 ? 'y' : 'ies'}  (t thread ${task.slug || task.id})`);
