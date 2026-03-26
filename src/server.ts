@@ -191,9 +191,9 @@ function registerTools(server: McpServer) {
     const parentTask = await db.resolveRef(parent);
     if (!parentTask) return { content: [{ type: 'text', text: `Parent task "${parent}" not found.` }] };
 
-    // Replies go global — scope comes from @mentions in body, not parent
+    // Replies inherit parent scope unless body @mentions a different repo
     const bodyProject = await db.resolveBodyProject(body);
-    const child = await db.add(body, { project: bodyProject, tags, source });
+    const child = await db.add(body, { project: bodyProject || parentTask.project, tags, source });
     await rhizome.onAdd(child);
     await rhizome.onReply(child, parentTask);
 
