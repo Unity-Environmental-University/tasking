@@ -182,6 +182,12 @@
     color: var(--ink);
     font-size: 13px;
     line-height: 1.5;
+    max-height: 4.5em; /* ~3 lines when collapsed */
+    overflow: hidden;
+    position: relative;
+  }
+  .task.expanded .task-text {
+    max-height: none;
   }
   .task-meta {
     display: flex;
@@ -271,6 +277,30 @@
   .thread-reply .reply-source { color: var(--ink-light); font-size: 10px; }
   .thread-reply .reply-time { color: var(--ink-faint); font-size: 10px; float: right; }
 
+  /* parent breadcrumb for reply tasks */
+  .parent-breadcrumb {
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--ink-light);
+    cursor: pointer;
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .parent-breadcrumb:hover { color: var(--coral); }
+  .parent-breadcrumb .parent-arrow { color: var(--ink-faint); }
+  .parent-breadcrumb .parent-body {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 500px;
+  }
+  .parent-breadcrumb .parent-root {
+    color: var(--ink-faint);
+    font-size: 10px;
+  }
+
   /* thread preview (visible when collapsed) */
   .thread-preview {
     margin-top: 6px;
@@ -357,6 +387,83 @@
   .add-bar .btn { background: var(--teal); color: var(--warm-white); border-color: var(--teal); }
   .add-bar .btn:hover { background: #15594C; }
 
+  /* ── thread overlay ────────────────────────────── */
+  .thread-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 22, 18, 0.4);
+    z-index: 200;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 80px;
+  }
+  .thread-overlay.visible { display: flex; }
+  .thread-overlay-content {
+    background: var(--paper);
+    border: 1px solid var(--grid);
+    border-radius: 8px;
+    box-shadow: 0 8px 32px var(--shadow-md);
+    width: min(720px, 90vw);
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .thread-overlay-content .thread-root {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--grid);
+  }
+  .thread-overlay-content .thread-root-id {
+    font-family: var(--mono);
+    color: var(--ink-light);
+    font-size: 12px;
+  }
+  .thread-overlay-content .thread-root-meta {
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-top: 4px;
+  }
+  .thread-overlay-content .thread-entry {
+    padding: 8px 0 8px 16px;
+    border-left: 2px solid var(--grid);
+    margin-left: 8px;
+    margin-bottom: 4px;
+  }
+  .thread-overlay-content .thread-entry-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-light);
+    margin-right: 6px;
+  }
+  .thread-overlay-content .thread-entry-source {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-light);
+    margin-left: 6px;
+  }
+  .thread-overlay-content .thread-entry-time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    float: right;
+  }
+  .thread-overlay-content .thread-entry.current {
+    background: var(--cream);
+    border-left-color: var(--coral);
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .thread-overlay-close {
+    float: right;
+    cursor: pointer;
+    font-size: 18px;
+    color: var(--ink-light);
+    line-height: 1;
+  }
+  .thread-overlay-close:hover { color: var(--coral); }
+
   /* ── signal view ─────────────────────────────── */
   .signal-section { margin-bottom: 20px; }
   .signal-section h3 {
@@ -431,6 +538,10 @@
   <div class="loading">loading...</div>
 </div>
 
+<div class="thread-overlay" id="thread-overlay" onclick="if(event.target===this)closeThreadOverlay()">
+  <div class="thread-overlay-content" id="thread-overlay-content"></div>
+</div>
+
 <div class="add-bar">
   <input type="text" id="add-input" placeholder="add a task... (@repo to scope locally)">
   <select id="add-tags">
@@ -442,6 +553,11 @@
     <option value="A">A</option>
     <option value="B">B</option>
     <option value="C">C</option>
+  </select>
+  <select id="add-needs">
+    <option value="">needs</option>
+    <option value="@hallie">@h</option>
+    <option value="@claude">@c</option>
   </select>
   <button class="btn" onclick="addTask()">add</button>
 </div>
@@ -503,7 +619,7 @@ function renderPills(task) {
   if (task.repo) h += `<span class="pill repo">@${task.repo}</span>`;
   if (task.needs_attention) h += `<span class="pill flag">${task.needs_attention}</span>`;
   if (task.tags?.includes('c')) h += `<span class="pill claude-tag">[c]</span>`;
-  if (task.personas?.length) task.personas.forEach(p => { h += `<span class="pill persona">♟${p}</span>`; });
+  if (task.personas?.length) task.personas.forEach(p => { h += `<span class="pill persona" onclick="event.stopPropagation(); removeStory(${task.id},'${p}')" title="click to remove">♟${p}</span>`; });
   if (task.reply_count > 0) h += `<span class="pill replies">${task.reply_count} repl${task.reply_count === 1 ? 'y' : 'ies'}</span>`;
   if (task.status === 'done') h += `<span class="pill status-done">done</span>`;
   if (task.status === 'cancelled') h += `<span class="pill status-cancelled">cancelled</span>`;
@@ -528,6 +644,11 @@ function renderTask(task) {
       <div class="task-top">
         <div class="task-sym">${task.id} ${sym}</div>
         <div class="task-body">
+          ${task.parent ? `<div class="parent-breadcrumb" onclick="event.stopPropagation(); openThread(${task.thread_root ? task.thread_root.id : task.parent.id}, ${task.id})">
+            <span class="parent-arrow">↩</span>
+            <span class="parent-body">[${task.parent.id}] ${esc(task.parent.body.slice(0, 80))}${task.parent.body.length > 80 ? '…' : ''}</span>
+            ${task.thread_root && task.thread_root.id !== task.parent.id ? `<span class="parent-root">(root: [${task.thread_root.id}])</span>` : ''}
+          </div>` : ''}
           <div class="task-text">${esc(task.body)}</div>
           <div class="task-meta">${renderPills(task)}</div>
           ${task.last_reply ? `<div class="thread-preview">
@@ -553,9 +674,14 @@ function renderTask(task) {
             <button class="btn" onclick="setFlag(event,${task.id},'@claude')">⚑ @c</button>
             ${task.needs_attention ? `<button class="btn" onclick="doAction(event,${task.id},'unflag')">unflag</button>` : ''}
           </div>
+          <button class="btn" onclick="showEdit(event,${task.id})">edit</button>
           <button class="btn" onclick="showStory(event,${task.id})">♟ story</button>
           <button class="btn cancel-btn" onclick="doAction(event,${task.id},'cancel')">cancel</button>
         ` : ''}
+      </div>
+      <div class="reply-form" id="edit-${task.id}">
+        <input type="text" placeholder="edit body..." value="${esc(task.body)}" onkeydown="if(event.key==='Enter')submitEdit(${task.id},this);if(event.key==='Escape'){event.stopPropagation();this.parentElement.classList.remove('visible')}">
+        <button class="btn" onclick="submitEdit(${task.id},this.previousElementSibling)">save</button>
       </div>
       <div class="reply-form" id="story-${task.id}">
         <input type="text" placeholder="persona (e.g. learning-student)" onkeydown="if(event.key==='Enter')submitStory(${task.id},this)">
@@ -566,6 +692,7 @@ function renderTask(task) {
         <button class="btn" onclick="doSnooze(event,${task.id},'friday')">friday</button>
         <button class="btn" onclick="doSnooze(event,${task.id},'next-week')">next week</button>
         <button class="btn" onclick="doSnooze(event,${task.id},'next-month')">next month</button>
+        <input type="date" style="padding:3px 6px;border:1px solid var(--grid);border-radius:3px;font-family:var(--mono);font-size:10px;color:var(--ink-mid)" onchange="doSnoozeDate(event,${task.id},this.value)">
       </div>
       <div class="reply-form" id="reply-${task.id}">
         <input type="text" placeholder="reply..." onkeydown="if(event.key==='Enter')submitReply(${task.id},this)">
@@ -587,9 +714,27 @@ async function loadTab(tab, preserveExpanded = false) {
 
   if (tab === 'attention') {
     const tasks = await api('/tasks/attention?who=hallie');
-    el.innerHTML = tasks.length
-      ? tasks.map(renderTask).join('')
-      : '<div class="empty">Nothing needs your attention right now.</div>';
+    if (tasks.length) {
+      el.innerHTML = tasks.map(renderTask).join('');
+    } else {
+      // Show a useful digest instead of dead end
+      const [recent, stats] = await Promise.all([
+        api('/activity?limit=12'),
+        api('/stats'),
+      ]);
+      let html = '<div class="empty">Nothing needs your attention right now.</div>';
+      html += '<div style="max-width:600px;margin:16px auto;padding:0 24px">';
+      html += `<div style="font-family:var(--mono);font-size:11px;color:var(--ink-light);margin-bottom:12px">${stats.open} open · ${stats.done_today} done today · ${stats.claude_tasks} [c]</div>`;
+      if (recent.length) {
+        html += '<div style="font-family:var(--mono);font-size:10px;color:var(--ink-light);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px">recent</div>';
+        recent.forEach(a => {
+          const verb = a.predicate.replace(/-/g, ' ');
+          html += `<div style="font-size:12px;color:var(--ink-mid);padding:3px 0;font-family:var(--mono)">${esc(a.subject)} <span style="color:var(--teal)">${esc(verb)}</span> ${esc(a.object)} <span style="color:var(--ink-faint);font-size:10px">${timeAgo(a.created_at)}</span></div>`;
+        });
+      }
+      html += '</div>';
+      el.innerHTML = html;
+    }
   }
   else if (tab === 'open') {
     const tasks = await api('/tasks');
@@ -648,7 +793,8 @@ async function loadTab(tab, preserveExpanded = false) {
       html += `<div class="signal-section"><h3>stuck (open &gt; 3 days)</h3>`;
       data.stuck.forEach(t => {
         const repo = t.project ? t.project.split('/').pop() : '(global)';
-        html += `<div class="signal-item"><span class="age">${t.age_days}d</span> [${t.id}] ${esc(t.body)} <span class="pill repo">@${repo}</span></div>`;
+        const body = t.body.length > 120 ? t.body.slice(0, 120) + '…' : t.body;
+        html += `<div class="signal-item"><span class="age">${t.age_days}d</span> [${t.id}] ${esc(body)} <span class="pill repo">@${repo}</span></div>`;
       });
       html += `</div>`;
     }
@@ -656,7 +802,8 @@ async function loadTab(tab, preserveExpanded = false) {
       html += `<div class="signal-section"><h3>deferred</h3>`;
       data.deferred.forEach(t => {
         const repo = t.project ? t.project.split('/').pop() : '(global)';
-        html += `<div class="signal-item">${dateStr(t.snoozed_to)} (+${t.days_away}d) [${t.id}] ${esc(t.body)} <span class="pill repo">@${repo}</span></div>`;
+        const body = t.body.length > 120 ? t.body.slice(0, 120) + '…' : t.body;
+        html += `<div class="signal-item">${dateStr(t.snoozed_to)} (+${t.days_away}d) [${t.id}] ${esc(body)} <span class="pill repo">@${repo}</span></div>`;
       });
       html += `</div>`;
     }
@@ -677,7 +824,8 @@ async function loadTab(tab, preserveExpanded = false) {
     if (data.signals?.length) {
       html += `<div class="signal-section"><h3>unacted loop signals</h3>`;
       data.signals.forEach(s => {
-        html += `<div class="signal-item">[${s.id}] ${esc(s.body)}</div>`;
+        const body = s.body.length > 120 ? s.body.slice(0, 120) + '…' : s.body;
+        html += `<div class="signal-item">[${s.id}] ${esc(body)}</div>`;
       });
       html += `</div>`;
     }
@@ -716,6 +864,39 @@ async function toggleTask(id) {
   });
 }
 
+async function openThread(rootId, highlightId) {
+  const data = await api(`/tasks/${rootId}/thread`);
+  if (!data.root) return;
+  const overlay = document.getElementById('thread-overlay');
+  const content = document.getElementById('thread-overlay-content');
+  const root = data.root;
+  const rootStatus = { open: '\u2022', done: '\u2713', cancelled: '\u2717', log: '\u2013' }[root.status] || '?';
+  let html = `<span class="thread-overlay-close" onclick="closeThreadOverlay()">\u00d7</span>`;
+  html += `<div class="thread-root">
+    <span class="thread-root-id">[${root.id}] ${rootStatus}</span> ${esc(root.body)}
+    <div class="thread-root-meta">${root.source && root.source !== 'hallie' ? `{${root.source}} ` : ''}${root.repo ? '@' + root.repo + ' ' : ''}${dateStr(root.task_date)}</div>
+  </div>`;
+  if (data.thread?.length) {
+    for (const t of data.thread) {
+      const isCurrent = t.id === highlightId;
+      html += `<div class="thread-entry${isCurrent ? ' current' : ''}" style="margin-left:${8 + t.depth * 16}px">
+        <span class="thread-entry-id">[${t.id}]</span>
+        ${esc(t.body)}
+        ${t.source && t.source !== 'hallie' ? `<span class="thread-entry-source">{${t.source}}</span>` : ''}
+        <span class="thread-entry-time">${timeAgo(t.created_at)}</span>
+      </div>`;
+    }
+  } else {
+    html += `<div style="color:var(--ink-faint);font-style:italic;margin-top:8px">(no replies)</div>`;
+  }
+  content.innerHTML = html;
+  overlay.classList.add('visible');
+}
+
+function closeThreadOverlay() {
+  document.getElementById('thread-overlay').classList.remove('visible');
+}
+
 async function doAction(event, id, action) {
   event.stopPropagation();
   await api(`/tasks/${id}/${action}`, { method: 'POST', body: '{}' });
@@ -739,6 +920,26 @@ function showStory(event, id) {
   const el = document.getElementById(`story-${id}`);
   el.classList.toggle('visible');
   if (el.classList.contains('visible')) el.querySelector('input').focus();
+}
+
+function showEdit(event, id) {
+  event.stopPropagation();
+  const el = document.getElementById(`edit-${id}`);
+  el.classList.toggle('visible');
+  if (el.classList.contains('visible')) { const inp = el.querySelector('input'); inp.focus(); inp.select(); }
+}
+
+async function submitEdit(id, input) {
+  const text = input.value.trim();
+  if (!text) return;
+  await api(`/tasks/${id}/edit`, { method: 'POST', body: JSON.stringify({ body: text }) });
+  await refresh();
+}
+
+async function removeStory(id, persona) {
+  if (!confirm(`Remove ♟${persona} from task ${id}?`)) return;
+  await api(`/tasks/${id}/unstory`, { method: 'POST', body: JSON.stringify({ persona }) });
+  await refresh();
 }
 
 async function submitStory(id, input) {
@@ -772,6 +973,13 @@ async function doSnooze(event, id, when) {
   await refresh();
 }
 
+async function doSnoozeDate(event, id, dateVal) {
+  event.stopPropagation();
+  if (!dateVal) return;
+  await api(`/tasks/${id}/snooze`, { method: 'POST', body: JSON.stringify({ to_date: dateVal }) });
+  await refresh();
+}
+
 async function submitReply(id, input) {
   const text = input.value.trim();
   if (!text) return;
@@ -791,15 +999,50 @@ async function addTask() {
   const repoMatch = body.match(/^@(\S+)\s+(.+)/);
   if (repoMatch) { project = `/Users/hlarsson/repos/${repoMatch[1]}`; body = repoMatch[2]; }
   const priority = document.getElementById('add-priority').value || null;
+  const needs = document.getElementById('add-needs').value || null;
   await api('/tasks/add', {
     method: 'POST',
-    body: JSON.stringify({ body, project, tags: tags.value ? [tags.value] : [], source: 'hallie', priority }),
+    body: JSON.stringify({ body, project, tags: tags.value ? [tags.value] : [], source: 'hallie', priority, needs }),
   });
   input.value = '';
   await refresh();
 }
 
 document.getElementById('add-input').addEventListener('keydown', e => { if (e.key === 'Enter') addTask(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.getElementById('thread-overlay').classList.contains('visible')) return closeThreadOverlay();
+    if (expandedId) { expandedId = null; document.querySelectorAll('.task').forEach(el => el.classList.remove('expanded')); return; }
+  }
+  // Skip keyboard nav when typing in an input
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (document.getElementById('thread-overlay').classList.contains('visible')) return;
+
+  const tasks = [...document.querySelectorAll('.task')];
+  if (!tasks.length) return;
+  const ids = tasks.map(t => parseInt(t.dataset.id));
+  const idx = expandedId ? ids.indexOf(expandedId) : -1;
+
+  if (e.key === 'j' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const next = idx < ids.length - 1 ? idx + 1 : 0;
+    toggleTask(ids[next]);
+    tasks[next].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  } else if (e.key === 'k' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prev = idx > 0 ? idx - 1 : ids.length - 1;
+    toggleTask(ids[prev]);
+    tasks[prev].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  } else if (e.key === 'd' && expandedId) {
+    doAction(e, expandedId, 'done');
+  } else if (e.key === 's' && expandedId) {
+    showSnooze(e, expandedId);
+  } else if (e.key === 'r' && expandedId) {
+    showReply(e, expandedId);
+  } else if (e.key === 'x' && expandedId) {
+    doAction(e, expandedId, 'cancel');
+  }
+});
 
 // ── meta (stats, oncall) ──────────────────────
 

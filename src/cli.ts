@@ -190,7 +190,10 @@ if (!cmd || cmd === 'list' || cmd === 'ls') {
   call('thread', { ref: rest[0] || '' });
 
 } else if (cmd === 'attn' || cmd === 'attention') {
-  call('attention', { who: rest[0] || '@hallie', project: gitRoot() || undefined });
+  const who = rest[0] || '@hallie';
+  // Only scope @claude flags by repo — humans see everything
+  const isClaudeQuery = ['@claude', '@c', 'claude', 'c'].includes(who.toLowerCase().replace(/^@/, ''));
+  call('attention', { who, project: isClaudeQuery ? (gitRoot() || undefined) : undefined });
 
 } else if (cmd === 'flag') {
   const id = Number(rest[0]);
@@ -326,7 +329,7 @@ t — bullet journal task manager
   call('trello_view', { board: rest[0] || undefined, list: rest[1] || undefined });
 
 } else if (cmd === 'claude_tasks') {
-  call('claude_tasks', {});
+  call('claude_tasks', { project: rest[0] || undefined });
 
 } else if (cmd === 'mv') {
   call('move', { id: Number(rest[0]), project: gitRoot() || undefined });

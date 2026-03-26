@@ -163,6 +163,28 @@ export async function getThread(parentRef: string): Promise<Array<{ subject: str
   }
 }
 
+export async function getParent(ref: string): Promise<string | null> {
+  try {
+    const { rows } = await rhizomePool.query(
+      `SELECT object FROM edges WHERE subject = $1 AND predicate = 'reply-to' AND dissolved_at IS NULL LIMIT 1`,
+      [ref]
+    );
+    return rows[0]?.object || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getThreadRoot(ref: string): Promise<string> {
+  let current = ref;
+  for (let i = 0; i < 20; i++) { // safety limit
+    const parent = await getParent(current);
+    if (!parent) return current;
+    current = parent;
+  }
+  return current;
+}
+
 export async function getReplyCount(ref: string): Promise<number> {
   try {
     const { rows } = await rhizomePool.query(

@@ -55,7 +55,8 @@ function registerTools(server: McpServer) {
     needs: z.string().optional(),
     priority: z.enum(['A', 'B', 'C']).optional(),
   }, async ({ body, date, project, tags, source, needs, priority }) => {
-    const task = await db.add(body, { date, project, tags, source, priority });
+    const resolvedProject = project || await db.resolveBodyProject(body);
+    const task = await db.add(body, { date, project: resolvedProject, tags, source, priority });
     rhizome.onAdd(task);
     await applyAttention(task, needs);
     return { content: [{ type: 'text', text: fmt(task) }] };
@@ -190,7 +191,9 @@ function registerTools(server: McpServer) {
     const parentTask = await db.resolveRef(parent);
     if (!parentTask) return { content: [{ type: 'text', text: `Parent task "${parent}" not found.` }] };
 
-    const child = await db.add(body, { project: parentTask.project, tags, source });
+    // Replies go global — scope comes from @mentions in body, not parent
+    const bodyProject = await db.resolveBodyProject(body);
+    const child = await db.add(body, { project: bodyProject, tags, source });
     await rhizome.onAdd(child);
     await rhizome.onReply(child, parentTask);
 
@@ -402,8 +405,10 @@ function registerTools(server: McpServer) {
     return { content: [{ type: 'text', text: lines.join('\n') }] };
   });
 
-  tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {}, async () => {
-    const tasks = await db.claudeTasks();
+  tool('claude_tasks', 'Get tasks tagged [c] for Claude context', {
+    project: z.string().optional().describe('Filter to global + this project path (omit for all)'),
+  }, async (args: any) => {
+    const tasks = await db.claudeTasks(args.project || undefined);
     if (!tasks.length) return { content: [{ type: 'text', text: 'No claude-tagged tasks.' }] };
     return { content: [{ type: 'text', text: tasks.map(fmt).join('\n') }] };
   });

@@ -42,9 +42,10 @@ function taskJson(task: any, extra: any = {}) {
 async function enrichTasks(tasks: any[]) {
   return Promise.all(tasks.map(async t => {
     const ref = rhizome.taskRef(t);
-    const [replyCount, personas] = await Promise.all([
+    const [replyCount, personas, parentRef] = await Promise.all([
       rhizome.getReplyCount(ref),
       rhizome.getTaskPersonas(ref),
+      rhizome.getParent(ref),
     ]);
     // Get last reply for preview
     let lastReply = null;
@@ -57,25 +58,51 @@ async function enrichTasks(tasks: any[]) {
         if (child) lastReply = { id: child.id, body: child.body, source: child.source, created_at: child.created_at };
       }
     }
-    return taskJson(t, { reply_count: replyCount, personas, last_reply: lastReply });
+    // Get parent + thread root for reply tasks
+    let parent = null;
+    let threadRoot = null;
+    if (parentRef) {
+      const parentIdPart = parentRef.replace('task:', '');
+      const parentTask = /^\d+$/.test(parentIdPart) ? await db.getById(Number(parentIdPart)) : await db.getBySlug(parentIdPart);
+      if (parentTask) parent = { id: parentTask.id, body: parentTask.body, slug: parentTask.slug };
+      // Find thread root (may differ from direct parent)
+      const rootRef = await rhizome.getThreadRoot(ref);
+      if (rootRef !== parentRef) {
+        const rootIdPart = rootRef.replace('task:', '');
+        const rootTask = /^\d+$/.test(rootIdPart) ? await db.getById(Number(rootIdPart)) : await db.getBySlug(rootIdPart);
+        if (rootTask) threadRoot = { id: rootTask.id, body: rootTask.body, slug: rootTask.slug };
+      }
+    }
+    return taskJson(t, { reply_count: replyCount, personas, last_reply: lastReply, parent, thread_root: threadRoot });
   }));
 }
 
 type RouteHandler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, id?: number) => Promise<void>;
 const routes: Record<string, RouteHandler> = {};
 
-routes['GET /api/tasks'] = async (_req, res) => {
-  json(res, await enrichTasks(await db.listAllOpen()));
+// Filter replies out of list views — replies only appear inside their parent's thread
+function rootsOnly(tasks: any[]) {
+  return tasks.filter(t => !t.parent);
+}
+
+routes['GET /api/tasks'] = async (_req, res, url) => {
+  const all = url.searchParams.get('include_replies') === '1';
+  const enriched = await enrichTasks(await db.listAllOpen());
+  json(res, all ? enriched : rootsOnly(enriched));
 };
 
 routes['GET /api/tasks/attention'] = async (_req, res, url) => {
   const who = url.searchParams.get('who') || '@hallie';
-  json(res, await enrichTasks(await db.attentionTasks(who)));
+  const enriched = await enrichTasks(await db.attentionTasks(who));
+  // For attention: show replies too if they're specifically flagged
+  json(res, enriched);
 };
 
 routes['GET /api/tasks/all'] = async (_req, res, url) => {
   const limit = parseInt(url.searchParams.get('limit') || '100');
-  json(res, await enrichTasks(await db.listAll({ limit })));
+  const all = url.searchParams.get('include_replies') === '1';
+  const enriched = await enrichTasks(await db.listAll({ limit }));
+  json(res, all ? enriched : rootsOnly(enriched));
 };
 
 routes['GET /api/tasks/thread'] = async (_req, res, _url, id) => {
@@ -220,8 +247,9 @@ routes['POST /api/tasks/reply'] = async (req, res, _url, id) => {
   if (!body.body) return json(res, { error: 'body required' }, 400);
   const parentTask = await db.getById(id!);
   if (!parentTask) return json(res, { error: 'not found' }, 404);
+  const bodyProject = await db.resolveBodyProject(body.body);
   const child = await db.add(body.body, {
-    project: parentTask.project,
+    project: bodyProject,
     tags: body.tags || [],
     source: body.source || 'hallie',
   });
@@ -262,6 +290,14 @@ routes['POST /api/tasks/add'] = async (req, res) => {
   json(res, taskJson(task));
 };
 
+routes['POST /api/tasks/edit'] = async (req, res, _url, id) => {
+  const body = await parseBody(req);
+  if (!body.body) return json(res, { error: 'body required' }, 400);
+  const task = await db.editBody(id!, body.body);
+  if (!task) return json(res, { error: 'not found' }, 404);
+  json(res, taskJson(task));
+};
+
 routes['POST /api/tasks/priority'] = async (req, res, _url, id) => {
   const body = await parseBody(req);
   const task = await db.setPriority(id!, body.priority || null);
@@ -293,7 +329,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
-    const taskAction = url.pathname.match(/^\/api\/tasks\/(\d+)\/(thread|done|cancel|snooze|flag|unflag|reply|priority|story|unstory)$/);
+    const taskAction = url.pathname.match(/^\/api\/tasks\/(\d+)\/(thread|done|cancel|snooze|flag|unflag|reply|priority|story|unstory|edit)$/);
     if (taskAction) {
       const [, idStr, action] = taskAction;
       const key = `${req.method} /api/tasks/${action}`;

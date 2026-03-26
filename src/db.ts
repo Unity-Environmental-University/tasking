@@ -64,6 +64,21 @@ export async function logCall(tool: string, args: Record<string, unknown>, succe
   ).catch(e => console.error('[call_log]', e.message));
 }
 
+// ── Project resolution from @mentions ────────────────────────────────────
+
+export async function resolveBodyProject(body: string): Promise<string | null> {
+  const match = body.match(/@([a-z0-9_-]+)/i);
+  if (!match) return null;
+  const name = match[1].toLowerCase();
+  // Skip people names
+  if (['hallie', 'h', 'claude', 'c'].includes(name)) return null;
+  const { rows } = await pool.query(
+    `SELECT DISTINCT project FROM tasks WHERE project IS NOT NULL AND project LIKE $1 LIMIT 1`,
+    [`%/${name}`]
+  );
+  return rows[0]?.project || null;
+}
+
 // ── Tasks ─────────────────────────────────────────────────────────────────
 
 export async function add(body: string, opts: { date?: string; project?: string | null; tags?: string[]; source?: string; priority?: Priority } = {}): Promise<Task> {
@@ -184,15 +199,23 @@ export async function log(body: string, opts: { date?: string; project?: string 
   return rows[0];
 }
 
-export async function claudeTasks(): Promise<Task[]> {
+export async function claudeTasks(project?: string): Promise<Task[]> {
   const d = new Date().toISOString().slice(0, 10);
-  const { rows } = await pool.query(
-    `SELECT * FROM tasks
-     WHERE status NOT IN ('done', 'cancelled')
+  const baseWhere = `status NOT IN ('done', 'cancelled')
        AND task_date <= $1
        AND (snoozed_to IS NULL OR snoozed_to <= $1)
        AND (snoozed_until IS NULL OR snoozed_until <= NOW())
-       AND 'c' = ANY(tags)
+       AND 'c' = ANY(tags)`;
+  if (project) {
+    const { rows } = await pool.query(
+      `SELECT * FROM tasks WHERE ${baseWhere} AND (project IS NULL OR project = $2)
+       ORDER BY priority NULLS LAST, task_date, id`,
+      [d, project]
+    );
+    return rows;
+  }
+  const { rows } = await pool.query(
+    `SELECT * FROM tasks WHERE ${baseWhere}
      ORDER BY priority NULLS LAST, task_date, id`,
     [d]
   );
@@ -293,6 +316,17 @@ export async function setAttention(id: number, who: string | null): Promise<Task
 export async function attentionTasks(who: string, project?: string | null): Promise<Task[]> {
   const normalized = who.replace(/^@/, '').toLowerCase();
   const variants = normalized === 'h' ? ['hallie', 'h'] : [normalized];
+  if (project) {
+    const { rows } = await pool.query(
+      `SELECT * FROM tasks
+       WHERE status NOT IN ('done', 'cancelled')
+         AND (LOWER(REPLACE(needs_attention, '@', '')) = ANY($1))
+         AND (project IS NULL OR project = $2)
+       ORDER BY priority NULLS LAST, task_date, id`,
+      [variants, project]
+    );
+    return rows;
+  }
   const { rows } = await pool.query(
     `SELECT * FROM tasks
      WHERE status NOT IN ('done', 'cancelled')
