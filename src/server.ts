@@ -46,7 +46,7 @@ function registerTools(server: McpServer) {
 
   // ── Tasks ──────────────────────────────────────────────────────────────
 
-  tool('add', 'Add a task. Pass source: "claude" when Claude creates. needs: "@hallie" to flag.', {
+  tool('add', 'Add a task. @repo in body auto-scopes; @global forces global. Pass source: "claude" when Claude creates. needs: "@hallie" to flag.', {
     body: z.string(),
     date: z.string().optional(),
     project: z.string().optional(),
@@ -182,7 +182,7 @@ function registerTools(server: McpServer) {
 
   // ── Threads & replies ──────────────────────────────────────────────────
 
-  tool('reply', 'Reply to a task. needs: "@hallie" to flag. Omit for status updates. Auto-clears flag when the flaggee responds.', {
+  tool('reply', 'Reply to a task. Inherits parent scope; @repo in body overrides, @global forces global. needs: "@hallie" to flag. Omit needs for status updates. Auto-clears flag when the flaggee responds.', {
     parent: z.string(),
     body: z.string(),
     tags: z.array(z.string()).optional(),

@@ -119,6 +119,9 @@ t help                   # full reference
 - **Local**: scoped to a git repo path, shown when `t list` run from that repo
 - `t c` defaults to local when in a git repo — claude-tagged tasks are almost always about current context
 - `-g` flag forces global
+- **@mentions in body**: `@repo-name` in task body auto-resolves to project path (e.g. `@tasking` → `/Users/hlarsson/repos/tasking`). Skips people names (@hallie, @claude).
+- **@global**: use `@global` or `@g` in body to explicitly make a task global (won't inherit parent scope)
+- **Reply inheritance**: replies inherit their parent's project scope. `@repo` in body overrides to that repo. `@global` overrides to null. No @mention = inherit parent.
 
 ## Rhizome integration
 

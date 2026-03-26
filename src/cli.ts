@@ -291,8 +291,8 @@ t — bullet journal task manager
   t notes <id>                 show annotation + blocking + replies
 
   t ask <id> <text>            reply + auto-flag @hallie (bot asks human)
-  t reply <id> <text>          reply to a task
-  t reply <id> <text> --needs @h   reply + flag
+  t reply <id> <text>          reply (inherits parent scope; @repo overrides)
+  t reply <id> <text> --needs @h   reply + flag (@global forces global)
   t thread <id>                show reply thread (marks as read)
   t attn [@who]                tasks needing attention (default @hallie)
   t flag <id> [@who]           flag for attention
